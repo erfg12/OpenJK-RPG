@@ -2885,6 +2885,13 @@ extern void RunEmplacedWeapon( gentity_t *ent, usercmd_t **ucmd );
 	if ( self->NPC )
 		DeathFX( self );
 
+	if ( self->npcRespawner && self->npcRespawner->inuse && self->npcRespawner->npcRespawner == self )
+	{
+		self->npcRespawner->genericValue1 = 1;
+		self->npcRespawner->genericValue2 = level.time + (int)self->npcRespawner->wait;
+		self->npcRespawner->nextthink = self->npcRespawner->genericValue2;
+	}
+
 
 	if (level.gametype == GT_POWERDUEL && !g_noPDuelCheck)
 	{ //powerduel checks

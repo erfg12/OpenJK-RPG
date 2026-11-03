@@ -214,7 +214,7 @@ void NPC_RemoveBody( gentity_t *self )
 		//			placed as dead NPCs by a designer...
 		//			For now we just assume that a corpse with no enemy was
 		//			placed in the map as a corpse
-		if ( self->enemy )
+		if ( self->enemy || self->s.eType == ET_NPC || self->npcRespawner )
 		{
 			//if ( !self->taskManager || !self->taskManager->IsRunning() )
 			if (!trap->ICARUS_IsRunning(self->s.number))

@@ -1453,7 +1453,10 @@ gentity_t *NPC_Spawn_Do( gentity_t *ent )
 	}
 	else
 	{
-		ent->NPC_type = Q_strlwr( G_NewString( ent->NPC_type ) );
+		if ( ent->genericValue15 != 1 )
+		{
+			ent->NPC_type = Q_strlwr( G_NewString( ent->NPC_type ) );
+		}
 	}
 
 	if ( ent->r.svFlags & SVF_NO_BASIC_SOUNDS )
@@ -4170,6 +4173,262 @@ void NPC_Spawn_f( gentity_t *ent )
 	}
 
 	NPC_SpawnType( ent, npc_type, targetname, isVehicle );
+}
+
+static gentity_t *NPC_SpawnAtSpotSingle( const char *npc_type, vec3_t origin, float yaw )
+{
+	gentity_t	*NPCspawner = NULL;
+
+	if ( !npc_type || !npc_type[0] )
+	{
+		return NULL;
+	}
+
+	NPCspawner = G_Spawn();
+	if ( !NPCspawner )
+	{
+		Com_Printf( S_COLOR_RED"NPC_SpawnAtSpot Error: Out of entities!\n" );
+		return NULL;
+	}
+
+	NPCspawner->think = G_FreeEntity;
+	NPCspawner->nextthink = level.time + FRAMETIME;
+
+	G_SetOrigin( NPCspawner, origin );
+	VectorCopy( origin, NPCspawner->s.origin );
+	NPCspawner->s.angles[YAW] = yaw;
+	trap->LinkEntity( (sharedEntity_t *)NPCspawner );
+
+	NPCspawner->NPC_type = (char *)npc_type;
+	NPCspawner->genericValue15 = 1;
+	NPCspawner->count = 1;
+	NPCspawner->delay = 0;
+
+	if ( !Q_stricmp( "gonk", NPCspawner->NPC_type ) )
+	{
+		NPC_Gonk_Precache();
+	}
+	else if ( !Q_stricmp( "mouse", NPCspawner->NPC_type ) )
+	{
+		NPC_Mouse_Precache();
+	}
+	else if ( !Q_strncmp( "r2d2", NPCspawner->NPC_type, 4 ) )
+	{
+		NPC_R2D2_Precache();
+	}
+	else if ( !Q_stricmp( "atst", NPCspawner->NPC_type ) )
+	{
+		NPC_ATST_Precache();
+	}
+	else if ( !Q_strncmp( "r5d2", NPCspawner->NPC_type, 4 ) )
+	{
+		NPC_R5D2_Precache();
+	}
+	else if ( !Q_stricmp( "mark1", NPCspawner->NPC_type ) )
+	{
+		NPC_Mark1_Precache();
+	}
+	else if ( !Q_stricmp( "mark2", NPCspawner->NPC_type ) )
+	{
+		NPC_Mark2_Precache();
+	}
+	else if ( !Q_stricmp( "interrogator", NPCspawner->NPC_type ) )
+	{
+		NPC_Interrogator_Precache( NULL );
+	}
+	else if ( !Q_stricmp( "probe", NPCspawner->NPC_type ) )
+	{
+		NPC_Probe_Precache();
+	}
+	else if ( !Q_stricmp( "seeker", NPCspawner->NPC_type ) )
+	{
+		NPC_Seeker_Precache();
+	}
+	else if ( !Q_stricmp( "remote", NPCspawner->NPC_type ) )
+	{
+		NPC_Remote_Precache();
+	}
+	else if ( !Q_strncmp( "shadowtrooper", NPCspawner->NPC_type, 13 ) )
+	{
+		NPC_ShadowTrooper_Precache();
+	}
+	else if ( !Q_stricmp( "minemonster", NPCspawner->NPC_type ) )
+	{
+		NPC_MineMonster_Precache();
+	}
+	else if ( !Q_stricmp( "howler", NPCspawner->NPC_type ) )
+	{
+		NPC_Howler_Precache();
+	}
+	else if ( !Q_stricmp( "sentry", NPCspawner->NPC_type ) )
+	{
+		NPC_Sentry_Precache();
+	}
+	else if ( !Q_stricmp( "protocol", NPCspawner->NPC_type ) )
+	{
+		NPC_Protocol_Precache();
+	}
+	else if ( !Q_stricmp( "galak_mech", NPCspawner->NPC_type ) )
+	{
+		NPC_GalakMech_Precache();
+	}
+	else if ( !Q_stricmp( "wampa", NPCspawner->NPC_type ) )
+	{
+		NPC_Wampa_Precache();
+	}
+
+	return NPC_Spawn_Do( NPCspawner );
+}
+
+gentity_t *NPC_SpawnAtSpot( const char *npc_type, vec3_t origin, float yaw )
+{
+	static const float offsets[8][2] = {
+		{  1.0f,  0.0f }, { -1.0f,  0.0f }, {  0.0f,  1.0f }, {  0.0f, -1.0f },
+		{  0.7f,  0.7f }, { -0.7f,  0.7f }, {  0.7f, -0.7f }, { -0.7f, -0.7f }
+	};
+	gentity_t	*spawned;
+	int			r, i;
+
+	spawned = NPC_SpawnAtSpotSingle( npc_type, origin, yaw );
+	if ( spawned )
+	{
+		return spawned;
+	}
+
+	// If someone is standing on the exact spawn point (e.g. after a melee kill), try nearby offsets
+	for ( r = 1; r <= 2; r++ )
+	{
+		float dist = ( r == 1 ) ? 56.0f : 104.0f;
+		for ( i = 0; i < 8; i++ )
+		{
+			vec3_t	tryOrg;
+			trace_t	tr;
+
+			VectorCopy( origin, tryOrg );
+			tryOrg[0] += offsets[i][0] * dist;
+			tryOrg[1] += offsets[i][1] * dist;
+
+			trap->Trace( &tr, origin, NULL, NULL, tryOrg, ENTITYNUM_NONE, MASK_SOLID, qfalse, 0, 0 );
+			if ( tr.fraction < 1.0f )
+			{
+				continue;
+			}
+
+			spawned = NPC_SpawnAtSpotSingle( npc_type, tryOrg, yaw );
+			if ( spawned )
+			{
+				return spawned;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+void G_NPCRespawner_Think( gentity_t *spawner )
+{
+	gentity_t	*npc;
+	gentity_t	*newNPC;
+
+	if ( !spawner || !spawner->inuse )
+	{
+		return;
+	}
+
+	npc = spawner->npcRespawner;
+
+	// If the spawned NPC is still alive and valid, check again in 500ms
+	if ( npc && npc->inuse && ( npc->s.eType == ET_NPC || npc->NPC ) && npc->npcRespawner == spawner && ( npc->health > 0 || npc->think == NPC_Begin ) )
+	{
+		spawner->genericValue1 = 0;
+		spawner->nextthink = level.time + 500;
+		return;
+	}
+
+	// NPC died or was removed; start countdown if not already running
+	if ( spawner->genericValue1 == 0 )
+	{
+		spawner->genericValue1 = 1;
+		spawner->genericValue2 = level.time + (int)spawner->wait;
+		spawner->nextthink = spawner->genericValue2;
+		return;
+	}
+
+	if ( level.time < spawner->genericValue2 )
+	{
+		spawner->nextthink = spawner->genericValue2;
+		return;
+	}
+
+	// Respawn timer has elapsed; remove old corpse if still present
+	if ( npc && npc->inuse && npc->npcRespawner == spawner )
+	{
+		npc->npcRespawner = NULL;
+		G_FreeEntity( npc );
+	}
+	spawner->npcRespawner = NULL;
+
+	newNPC = NPC_SpawnAtSpot( spawner->NPC_type, spawner->s.origin, spawner->s.angles[YAW] );
+	if ( newNPC )
+	{
+		newNPC->npcRespawner = spawner;
+		spawner->npcRespawner = newNPC;
+		spawner->genericValue1 = 0;
+		spawner->nextthink = level.time + 500;
+	}
+	else
+	{
+		// Spawn spot blocked (e.g. player standing on it); retry in 1 second
+		spawner->nextthink = level.time + 1000;
+	}
+}
+
+gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC )
+{
+	gentity_t	*spawner;
+
+	if ( !npc_type || !npc_type[0] )
+	{
+		return NULL;
+	}
+
+	if ( respawnSeconds < 1 )
+	{
+		respawnSeconds = 1;
+	}
+
+	spawner = G_Spawn();
+	if ( !spawner )
+	{
+		return NULL;
+	}
+
+	spawner->classname = "NPC_respawner";
+	spawner->r.svFlags |= SVF_NOCLIENT;
+	spawner->NPC_type = Q_strlwr( G_NewString( npc_type ) );
+	VectorCopy( origin, spawner->s.origin );
+	VectorCopy( origin, spawner->r.currentOrigin );
+	spawner->s.angles[YAW] = yaw;
+	spawner->wait = (float)( respawnSeconds * 1000 );
+	spawner->think = G_NPCRespawner_Think;
+
+	if ( initialNPC )
+	{
+		initialNPC->npcRespawner = spawner;
+		spawner->npcRespawner = initialNPC;
+		spawner->genericValue1 = 0;
+		spawner->nextthink = level.time + 500;
+	}
+	else
+	{
+		int spawnDelay = ( level.time < START_TIME_REMOVE_ENTS + 100 ) ? ( START_TIME_REMOVE_ENTS + 100 ) : 100;
+		spawner->npcRespawner = NULL;
+		spawner->genericValue1 = 1;
+		spawner->genericValue2 = level.time + spawnDelay;
+		spawner->nextthink = spawner->genericValue2;
+	}
+
+	return spawner;
 }
 
 /*

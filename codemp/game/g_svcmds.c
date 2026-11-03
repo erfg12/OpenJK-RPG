@@ -525,6 +525,43 @@ void Svcmd_AddModel_f( void ) {
 	trap->Print( "Added model: %s at <%s %s %s %s>\n", model, origin_number, origin_number2, origin_number3, yaw_number );
 }
 
+void Svcmd_AddRespawn_f( void ) {
+	char	npc_type[MAX_STRING_CHARS];
+	char	time_arg[MAX_STRING_CHARS];
+	char	origin_x[MAX_STRING_CHARS];
+	char	origin_y[MAX_STRING_CHARS];
+	char	origin_z[MAX_STRING_CHARS];
+	char	yaw_arg[MAX_STRING_CHARS];
+	vec3_t	origin;
+	float	yaw;
+	int		respawnSeconds;
+
+	if ( trap->Argc() != 7 ) {
+		trap->Print( "Usage: addrespawn <npc_type> <seconds> <x> <y> <z> <yaw>\n" );
+		return;
+	}
+
+	trap->Argv( 1, npc_type, sizeof( npc_type ) );
+	trap->Argv( 2, time_arg, sizeof( time_arg ) );
+	trap->Argv( 3, origin_x, sizeof( origin_x ) );
+	trap->Argv( 4, origin_y, sizeof( origin_y ) );
+	trap->Argv( 5, origin_z, sizeof( origin_z ) );
+	trap->Argv( 6, yaw_arg, sizeof( yaw_arg ) );
+
+	respawnSeconds = atoi( time_arg );
+	if ( respawnSeconds < 1 ) {
+		respawnSeconds = 1;
+	}
+
+	origin[0] = (float)atoi( origin_x );
+	origin[1] = (float)atoi( origin_y );
+	origin[2] = (float)atoi( origin_z );
+	yaw = (float)atoi( yaw_arg );
+
+	G_CreateNPCRespawner( npc_type, respawnSeconds, origin, yaw, NULL );
+	trap->Print( "Added NPC respawn: %s (%ds) at <%s %s %s %s>\n", npc_type, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+}
+
 void Svcmd_RPG_f( void ) {
 	int			i;
 	gentity_t	*ent;
@@ -566,6 +603,7 @@ svcmd_t svcmds[] = {
 	{ "addeffect",					Svcmd_AddEffect_f,					qfalse },
 	{ "addip",						Svcmd_AddIP_f,						qfalse },
 	{ "addmodel",					Svcmd_AddModel_f,					qfalse },
+	{ "addrespawn",					Svcmd_AddRespawn_f,					qfalse },
 	{ "botlist",					Svcmd_BotList_f,					qfalse },
 	{ "entitylist",					Svcmd_EntityList_f,					qfalse },
 	{ "forceteam",					Svcmd_ForceTeam_f,					qfalse },

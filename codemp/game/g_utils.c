@@ -978,6 +978,27 @@ void G_FreeEntity( gentity_t *ed ) {
 		G_FreeVehicleObject(ed->m_pVehicle);
 	}
 
+	if (ed->npcRespawner && ed->npcRespawner->inuse && ed->npcRespawner->npcRespawner == ed)
+	{
+		ed->npcRespawner->npcRespawner = NULL;
+		if (ed->npcRespawner->genericValue1 == 0)
+		{
+			ed->npcRespawner->genericValue1 = 1;
+			ed->npcRespawner->genericValue2 = level.time + (int)ed->npcRespawner->wait;
+			ed->npcRespawner->nextthink = ed->npcRespawner->genericValue2;
+		}
+	}
+
+	if (ed->s.eType == ET_NPC && ed->NPC && ed->NPC->tempGoal)
+	{
+		gentity_t *tempGoal = ed->NPC->tempGoal;
+		ed->NPC->tempGoal = NULL;
+		if (tempGoal->inuse && tempGoal->parent == ed)
+		{
+			G_FreeEntity(tempGoal);
+		}
+	}
+
 	if (ed->s.eType == ET_NPC && ed->client)
 	{ //this "client" structure is one of our dynamically allocated ones, so free the memory
 		int saberEntNum = -1;

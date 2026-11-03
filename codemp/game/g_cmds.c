@@ -3572,6 +3572,110 @@ void Cmd_ClearModels_f( gentity_t *ent ) {
 	trap->FS_Close( f );
 }
 
+extern gentity_t *NPC_SpawnType( gentity_t *ent, char *npc_type, char *targetname, qboolean isVehicle );
+
+static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
+	char			npc_type[MAX_STRING_CHARS];
+	char			timeArg[MAX_STRING_CHARS];
+	int				respawnSeconds;
+	gentity_t		*spawned;
+	char			savePath[MAX_QPATH];
+	vmCvar_t		mapname;
+	fileHandle_t	f;
+	char			line[256];
+
+	if ( trap->Argc() < 3 ) {
+		trap->SendServerCommand( ent-g_entities, va( "print \"Usage: /%s <npc_type> <seconds>\n\"", saveToFile ? "addrespawn" : "addrespawntemp" ) );
+		return;
+	}
+
+	if ( ent->client->ps.duelInProgress ) {
+		trap->SendServerCommand( ent-g_entities, "print \"You cannot spawn NPCs while in a duel.\n\"" );
+		return;
+	}
+
+	trap->Argv( 1, npc_type, sizeof( npc_type ) );
+	trap->Argv( 2, timeArg, sizeof( timeArg ) );
+	respawnSeconds = atoi( timeArg );
+	if ( respawnSeconds < 1 ) {
+		respawnSeconds = 1;
+	}
+
+	spawned = NPC_SpawnType( ent, npc_type, NULL, qfalse );
+	if ( !spawned ) {
+		trap->SendServerCommand( ent-g_entities, va( "print \"^1Failed to spawn NPC '%s'.^7\n\"", npc_type ) );
+		return;
+	}
+
+	G_CreateNPCRespawner( npc_type, respawnSeconds, spawned->r.currentOrigin, ent->client->ps.viewangles[YAW], spawned );
+	trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' (respawns every %ds).^7\n\"", npc_type, respawnSeconds ) );
+
+	if ( !saveToFile ) {
+		return;
+	}
+
+	trap->Cvar_Register( &mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM );
+	Com_sprintf( savePath, sizeof( savePath ), "mp_respawns/%s.cfg", mapname.string );
+
+	trap->FS_Open( savePath, &f, FS_APPEND );
+	if ( !f ) {
+		return;
+	}
+
+	G_LogPrintf( "AddRespawn command has been executed by %s. (%s, %ds) <%i %i %i %i>\n",
+		ent->client->pers.netname, npc_type, respawnSeconds,
+		(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
+	Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i\n",
+		npc_type, respawnSeconds,
+		(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
+	trap->FS_Write( line, strlen( line ), f );
+	trap->FS_Close( f );
+}
+
+void Cmd_AddRespawn_f( gentity_t *ent ) {
+	G_AddRespawnInternal( ent, qtrue );
+}
+
+void Cmd_AddRespawnTemp_f( gentity_t *ent ) {
+	G_AddRespawnInternal( ent, qfalse );
+}
+
+void Cmd_ClearRespawns_f( gentity_t *ent ) {
+	char			savePath[MAX_QPATH];
+	vmCvar_t		mapname;
+	fileHandle_t	f;
+	char			line[256];
+	int				i;
+	gentity_t		*check;
+
+	for ( i = MAX_CLIENTS; i < level.num_entities; i++ ) {
+		check = &g_entities[i];
+		if ( !check->inuse || !check->classname ) {
+			continue;
+		}
+		if ( !Q_stricmp( check->classname, "NPC_respawner" ) ) {
+			if ( check->npcRespawner && check->npcRespawner->inuse && check->npcRespawner->npcRespawner == check ) {
+				check->npcRespawner->npcRespawner = NULL;
+				G_FreeEntity( check->npcRespawner );
+			}
+			G_FreeEntity( check );
+		}
+	}
+
+	trap->SendServerCommand( ent-g_entities, "print \"NPC respawns have been successfully cleared from this map.\n\"" );
+	trap->Cvar_Register( &mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM );
+	Com_sprintf( savePath, sizeof( savePath ), "mp_respawns/%s.cfg", mapname.string );
+
+	trap->FS_Open( savePath, &f, FS_WRITE );
+	if ( !f ) {
+		return;
+	}
+
+	Com_sprintf( line, sizeof( line ), " " );
+	trap->FS_Write( line, strlen( line ), f );
+	trap->FS_Close( f );
+}
+
 #define LISTFILES_PER_PAGE 150
 
 static void G_ListFiles_f( gentity_t *ent, const char *cmdName, const char *baseDir, const char *extension, const char *prefix, qboolean stripExt ) {
@@ -3921,10 +4025,13 @@ command_t commands[] = {
 	{ "addeffecttemp",		Cmd_AddEffectTemp_f,		CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "addmodel",			Cmd_AddModel_f,				CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "addmodeltemp",		Cmd_AddModelTemp_f,			CMD_ALIVE|CMD_NOINTERMISSION },
+	{ "addrespawn",			Cmd_AddRespawn_f,			CMD_ALIVE|CMD_NOINTERMISSION },
+	{ "addrespawntemp",		Cmd_AddRespawnTemp_f,		CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "callteamvote",		Cmd_CallTeamVote_f,			CMD_NOINTERMISSION },
 	{ "callvote",			Cmd_CallVote_f,				CMD_NOINTERMISSION },
 	{ "cleareffects",		Cmd_ClearEffects_f,			CMD_NOINTERMISSION },
 	{ "clearmodels",		Cmd_ClearModels_f,			CMD_NOINTERMISSION },
+	{ "clearrespawns",		Cmd_ClearRespawns_f,		CMD_NOINTERMISSION },
 	{ "debugBMove_Back",	Cmd_BotMoveBack_f,			CMD_CHEAT|CMD_ALIVE },
 	{ "debugBMove_Forward",	Cmd_BotMoveForward_f,		CMD_CHEAT|CMD_ALIVE },
 	{ "debugBMove_Left",	Cmd_BotMoveLeft_f,			CMD_CHEAT|CMD_ALIVE },
