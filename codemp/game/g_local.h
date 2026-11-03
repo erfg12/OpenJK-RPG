@@ -467,6 +467,9 @@ typedef struct clientSession_s {
 	int			duelTeam;
 	int			siegeDesiredTeam;
 
+	int			rpgLevel;
+	int			rpgXP;
+
 	char		IP[NET_ADDRSTRMAXLEN];
 } clientSession_t;
 
@@ -1522,5 +1525,13 @@ void Svcmd_ToggleAllowVote_f( void );
 #undef XCVAR_PROTO
 void G_RegisterCvars( void );
 void G_UpdateCvars( void );
+
+// RPG system
+void G_RPG_Init( void );
+int G_RPG_GetNPCXP( const char *npcType );
+int G_RPG_GetXPForNextLevel( int level );
+float G_RPG_GetStatMultiplier( int level );
+void G_RPG_AddXP( gentity_t *player, const char *npcType, int xp );
+void Cmd_RPGStats_f( gentity_t *ent );
 
 extern gameImport_t *trap;

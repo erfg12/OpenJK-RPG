@@ -24,6 +24,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 #include "g_local.h"
 #include "bg_saga.h"
+#include "w_saber.h"
 
 #include "ui/menudef.h"			// for the voice chats
 
@@ -3676,6 +3677,230 @@ void Cmd_ListModels_f( gentity_t *ent ) {
 	G_ListFiles_f( ent, "listmodels", "models/map_objects", ".md3", "models/map_objects/", qfalse );
 }
 
+/*
+=======================================================================
+
+  RPG SYSTEM
+
+=======================================================================
+*/
+
+#define MAX_RPG_NPC_XP_ENTRIES 256
+#define MAX_RPG_XP_FILE_LEN 16384
+
+typedef struct rpgNPCXPEntry_s {
+	char	npcType[MAX_QPATH];
+	int		xp;
+} rpgNPCXPEntry_t;
+
+static rpgNPCXPEntry_t	s_rpgNPCXPTable[MAX_RPG_NPC_XP_ENTRIES];
+static int				s_numRpgNPCXPEntries = 0;
+
+void G_RPG_Init( void ) {
+	fileHandle_t	f;
+	int				len;
+	static char		buf[MAX_RPG_XP_FILE_LEN];
+	const char		*p;
+	char			*token;
+	const char		*fileName = g_rpgNPCXPFile.string[0] ? g_rpgNPCXPFile.string : "npc_xp.cfg";
+
+	s_numRpgNPCXPEntries = 0;
+
+	len = trap->FS_Open( fileName, &f, FS_READ );
+	if ( !f || len <= 0 ) {
+		if ( f ) {
+			trap->FS_Close( f );
+		}
+		trap->Print( "RPG: %s not found, using default NPC XP (%d).\n", fileName, g_rpgDefaultNPCXP.integer );
+		return;
+	}
+
+	if ( len >= (int)sizeof( buf ) ) {
+		len = sizeof( buf ) - 1;
+	}
+
+	trap->FS_Read( buf, len, f );
+	buf[len] = '\0';
+	trap->FS_Close( f );
+
+	p = buf;
+	COM_BeginParseSession( fileName );
+	while ( p && s_numRpgNPCXPEntries < MAX_RPG_NPC_XP_ENTRIES ) {
+		char npcName[MAX_QPATH];
+
+		token = COM_ParseExt( &p, qtrue );
+		if ( !token[0] ) {
+			break;
+		}
+		Q_strncpyz( npcName, token, sizeof( npcName ) );
+
+		token = COM_ParseExt( &p, qfalse );
+		if ( !token[0] ) {
+			break;
+		}
+
+		Q_strncpyz( s_rpgNPCXPTable[s_numRpgNPCXPEntries].npcType, npcName, sizeof( s_rpgNPCXPTable[0].npcType ) );
+		s_rpgNPCXPTable[s_numRpgNPCXPEntries].xp = atoi( token );
+		s_numRpgNPCXPEntries++;
+	}
+
+	trap->Print( "RPG: Loaded %d NPC XP overrides from %s\n", s_numRpgNPCXPEntries, fileName );
+}
+
+int G_RPG_GetNPCXP( const char *npcType ) {
+	int i;
+
+	if ( npcType && npcType[0] ) {
+		for ( i = 0; i < s_numRpgNPCXPEntries; i++ ) {
+			if ( !Q_stricmp( s_rpgNPCXPTable[i].npcType, npcType ) ) {
+				return s_rpgNPCXPTable[i].xp;
+			}
+		}
+	}
+
+	return g_rpgDefaultNPCXP.integer;
+}
+
+float G_RPG_GetStatMultiplier( int level ) {
+	int maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
+	int clampedLevel = Com_Clampi( 1, maxLevel, level );
+	float scale = g_rpgStatScale.value >= 0.0f ? g_rpgStatScale.value : 0.10f;
+
+	return 1.0f + ( (float)( clampedLevel - 1 ) * scale );
+}
+
+int G_RPG_GetXPForNextLevel( int level ) {
+	int maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
+	int i;
+	double totalXP = 0.0;
+	double baseXP = g_rpgBaseXP.value > 0.0f ? (double)g_rpgBaseXP.value : 5.0;
+	double growth = g_rpgXPGrowth.value >= 0.0f ? (double)g_rpgXPGrowth.value : 0.08;
+
+	if ( level >= maxLevel ) {
+		level = maxLevel - 1;
+	}
+	if ( level < 1 ) {
+		level = 1;
+	}
+
+	for ( i = 1; i <= level; i++ ) {
+		double stepXP = floor( baseXP * (double)i * pow( 1.0 + growth, (double)( i - 1 ) ) );
+		if ( stepXP < 1.0 ) {
+			stepXP = 1.0;
+		}
+		totalXP += stepXP;
+	}
+
+	return (int)totalXP;
+}
+
+void G_RPG_AddXP( gentity_t *player, const char *npcType, int xp ) {
+	gclient_t	*client;
+	int			maxLevel;
+	int			oldLevel;
+	qboolean	leveledUp = qfalse;
+
+	if ( !player || !player->client || player->s.number >= MAX_CLIENTS || player->NPC ) {
+		return;
+	}
+
+	if ( xp == 0 ) {
+		return;
+	}
+
+	client = player->client;
+	maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
+
+	if ( client->sess.rpgLevel < 1 ) {
+		client->sess.rpgLevel = 1;
+	}
+
+	oldLevel = client->sess.rpgLevel;
+	client->sess.rpgXP += xp;
+	if ( client->sess.rpgXP < 0 ) {
+		client->sess.rpgXP = 0;
+	}
+
+	while ( client->sess.rpgLevel < maxLevel && client->sess.rpgXP >= G_RPG_GetXPForNextLevel( client->sess.rpgLevel ) ) {
+		client->sess.rpgLevel++;
+		leveledUp = qtrue;
+	}
+
+	client->ps.stats[STAT_RPG_LEVEL] = client->sess.rpgLevel;
+
+	if ( leveledUp ) {
+		float	mult = G_RPG_GetStatMultiplier( client->sess.rpgLevel );
+		int		newMaxHealth = (int)( 100 * mult + 0.5f );
+		int		newMaxForce = (int)( FORCE_POWER_MAX * mult + 0.5f );
+		int		nextXP = G_RPG_GetXPForNextLevel( client->sess.rpgLevel );
+
+		client->pers.maxHealth = newMaxHealth;
+		client->ps.stats[STAT_MAX_HEALTH] = newMaxHealth;
+		client->ps.fd.forcePowerMax = newMaxForce;
+		client->ps.stats[STAT_MAX_FORCE] = newMaxForce;
+
+		if ( player->health > 0 ) {
+			player->health = client->ps.stats[STAT_HEALTH] = (int)( newMaxHealth * 1.25f );
+			client->ps.stats[STAT_ARMOR] = newMaxHealth;
+			client->ps.fd.forcePower = newMaxForce;
+		}
+
+		G_Sound( player, CHAN_ANNOUNCER, G_SoundIndex( "sound/weapons/force/absorb.mp3" ) );
+
+		if ( client->sess.rpgLevel >= maxLevel ) {
+			trap->SendServerCommand( player - g_entities, va( "cp \"^3LEVEL UP!^7\n^2Level %d (MAX)^7\nHP: ^1%d^7 | Armor: ^2%d^7 | Force: ^5%d^7\"",
+				client->sess.rpgLevel, newMaxHealth, newMaxHealth, newMaxForce ) );
+			trap->SendServerCommand( player - g_entities, va( "print \"^3[RPG]^7 Reached ^2MAX Level %d^7! (from ^5%d^7) | Max HP: ^1%d^7 | Max Armor: ^2%d^7 | Max Force: ^5%d^7\n\"",
+				client->sess.rpgLevel, oldLevel, newMaxHealth, newMaxHealth, newMaxForce ) );
+		} else {
+			trap->SendServerCommand( player - g_entities, va( "cp \"^3LEVEL UP!^7\n^2Level %d^7\nHP: ^1%d^7 | Armor: ^2%d^7 | Force: ^5%d^7\"",
+				client->sess.rpgLevel, newMaxHealth, newMaxHealth, newMaxForce ) );
+			trap->SendServerCommand( player - g_entities, va( "print \"^3[RPG]^7 Level Up! ^2Level %d^7 (XP: %d/%d) | Max HP: ^1%d^7 | Max Armor: ^2%d^7 | Max Force: ^5%d^7\n\"",
+				client->sess.rpgLevel, client->sess.rpgXP, nextXP, newMaxHealth, newMaxHealth, newMaxForce ) );
+		}
+	} else {
+		if ( client->sess.rpgLevel >= maxLevel ) {
+			trap->SendServerCommand( player - g_entities, va( "print \"^3[RPG]^7 +%d XP (%s) | ^2Level %d (MAX)^7 (Total XP: %d)\n\"",
+				xp, ( npcType && npcType[0] ) ? npcType : "NPC", client->sess.rpgLevel, client->sess.rpgXP ) );
+		} else {
+			int nextXP = G_RPG_GetXPForNextLevel( client->sess.rpgLevel );
+			trap->SendServerCommand( player - g_entities, va( "print \"^3[RPG]^7 +%d XP (%s) | Level %d (XP: %d/%d)\n\"",
+				xp, ( npcType && npcType[0] ) ? npcType : "NPC", client->sess.rpgLevel, client->sess.rpgXP, nextXP ) );
+		}
+	}
+}
+
+void Cmd_RPGStats_f( gentity_t *ent ) {
+	int		level, xp, nextXP, maxLevel;
+	float	mult;
+	int		regenMs;
+
+	if ( !ent || !ent->client ) {
+		return;
+	}
+
+	maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
+	level = ent->client->sess.rpgLevel > 0 ? ent->client->sess.rpgLevel : 1;
+	xp = ent->client->sess.rpgXP;
+	nextXP = G_RPG_GetXPForNextLevel( level );
+	mult = G_RPG_GetStatMultiplier( level );
+	regenMs = Q_max( (int)( g_forceRegenTime.integer / mult ), 1 );
+
+	trap->SendServerCommand( ent - g_entities, "print \"^3================ JK-RPG STATS ================^7\n\"" );
+	if ( level >= maxLevel ) {
+		trap->SendServerCommand( ent - g_entities, va( "print \"  Level: ^2%d / %d (MAX)^7 | Total XP: ^3%d^7\n\"", level, maxLevel, xp ) );
+	} else {
+		trap->SendServerCommand( ent - g_entities, va( "print \"  Level: ^2%d / %d^7 | XP: ^3%d / %d^7 (%d XP to next level)\n\"", level, maxLevel, xp, nextXP, nextXP - xp ) );
+	}
+	trap->SendServerCommand( ent - g_entities, va( "print \"  Stat Bonus: ^2+%d pct (x%.2f)^7 | HP: ^1%d/%d^7 | Armor: ^2%d/%d^7 | Force: ^5%d/%d^7 (%dms/pt)\n\"",
+		(int)( ( mult - 1.0f ) * 100.0f + 0.5f ), mult,
+		ent->health, ent->client->ps.stats[STAT_MAX_HEALTH],
+		ent->client->ps.stats[STAT_ARMOR], ent->client->ps.stats[STAT_MAX_HEALTH],
+		ent->client->ps.fd.forcePower, ent->client->ps.fd.forcePowerMax,
+		regenMs ) );
+	trap->SendServerCommand( ent - g_entities, "print \"^3==============================================^7\n\"" );
+}
+
 #define CMD_NOINTERMISSION		(1<<0)
 #define CMD_CHEAT				(1<<1)
 #define CMD_ALIVE				(1<<2)
@@ -3724,11 +3949,13 @@ command_t commands[] = {
 	{ "noclip",				Cmd_Noclip_f,				CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "notarget",			Cmd_Notarget_f,				CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "npc",				Cmd_NPC_f,					CMD_ALIVE },
+	{ "rpg",				Cmd_RPGStats_f,				CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "say",				Cmd_Say_f,					0 },
 	{ "say_team",			Cmd_SayTeam_f,				0 },
 	{ "score",				Cmd_Score_f,				0 },
 	{ "setviewpos",			Cmd_SetViewpos_f,			CMD_CHEAT|CMD_NOINTERMISSION },
 	{ "siegeclass",			Cmd_SiegeClass_f,			CMD_NOINTERMISSION },
+	{ "stats",				Cmd_RPGStats_f,				CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "team",				Cmd_Team_f,					CMD_NOINTERMISSION },
 //	{ "teamtask",			Cmd_TeamTask_f,				CMD_NOINTERMISSION },
 	{ "teamvote",			Cmd_TeamVote_f,				CMD_NOINTERMISSION },

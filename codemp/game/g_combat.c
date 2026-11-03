@@ -2588,6 +2588,12 @@ extern void RunEmplacedWeapon( gentity_t *ent, usercmd_t **ucmd );
 				AddScore( attacker, self->r.currentOrigin, 1 );
 			}
 
+			if ( ( self->s.eType == ET_NPC || self->NPC ) && attacker->s.number < MAX_CLIENTS && !attacker->NPC )
+			{
+				int npcXP = G_RPG_GetNPCXP( self->NPC_type );
+				G_RPG_AddXP( attacker, self->NPC_type, npcXP );
+			}
+
 			if( meansOfDeath == MOD_STUN_BATON ) {
 
 				// play humiliation on player

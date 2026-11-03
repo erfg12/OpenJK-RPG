@@ -440,7 +440,21 @@ void WP_SpawnInitForcePowers( gentity_t *ent )
 
 	ent->client->ps.fd.forceDeactivateAll = 0;
 
-	ent->client->ps.fd.forcePower = ent->client->ps.fd.forcePowerMax = FORCE_POWER_MAX;
+	if ( ent->s.number < MAX_CLIENTS && !ent->NPC )
+	{
+		if ( ent->client->sess.rpgLevel < 1 )
+		{
+			ent->client->sess.rpgLevel = 1;
+		}
+		ent->client->ps.fd.forcePowerMax = (int)( FORCE_POWER_MAX * G_RPG_GetStatMultiplier( ent->client->sess.rpgLevel ) + 0.5f );
+		ent->client->ps.fd.forcePower = ent->client->ps.fd.forcePowerMax;
+		ent->client->ps.stats[STAT_MAX_FORCE] = ent->client->ps.fd.forcePowerMax;
+	}
+	else
+	{
+		ent->client->ps.fd.forcePower = ent->client->ps.fd.forcePowerMax = FORCE_POWER_MAX;
+		ent->client->ps.stats[STAT_MAX_FORCE] = FORCE_POWER_MAX;
+	}
 	ent->client->ps.fd.forcePowerRegenDebounceTime = level.time;
 	ent->client->ps.fd.forceGripEntityNum = ENTITYNUM_NONE;
 	ent->client->ps.fd.forceMindtrickTargetIndex = 0;
@@ -5445,26 +5459,35 @@ void WP_ForcePowersUpdate( gentity_t *self, usercmd_t *ucmd )
 				WP_ForcePowerRegenerate(self, holoregen);
 			}
 
-			if (level.gametype == GT_SIEGE)
 			{
-				if ( self->client->holdingObjectiveItem && g_entities[self->client->holdingObjectiveItem].inuse && g_entities[self->client->holdingObjectiveItem].genericValue15 )
-					self->client->ps.fd.forcePowerRegenDebounceTime += 7000; //1 point per 7 seconds.. super slow
-				else if (self->client->siegeClass != -1 && (bgSiegeClasses[self->client->siegeClass].classflags & (1<<CFL_FASTFORCEREGEN)))
-					self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(g_forceRegenTime.integer*0.2, 1); //if this is siege and our player class has the fast force regen ability, then recharge with 1/5th the usual delay
-				else
-					self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(g_forceRegenTime.integer, 1);
-			}
-			else
-			{
-				if ( level.gametype == GT_POWERDUEL && self->client->sess.duelTeam == DUELTEAM_LONE )
+				float rpgScale = ( self->s.number < MAX_CLIENTS && !self->NPC ) ? G_RPG_GetStatMultiplier( self->client->sess.rpgLevel ) : 1.0f;
+				int baseRegenTime = (int)( g_forceRegenTime.integer / rpgScale );
+				if ( baseRegenTime < 1 )
 				{
-					if ( duel_fraglimit.integer )
-						self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(g_forceRegenTime.integer * (0.6 + (.3 * (float)self->client->sess.wins / (float)duel_fraglimit.integer)), 1);
+					baseRegenTime = 1;
+				}
+
+				if (level.gametype == GT_SIEGE)
+				{
+					if ( self->client->holdingObjectiveItem && g_entities[self->client->holdingObjectiveItem].inuse && g_entities[self->client->holdingObjectiveItem].genericValue15 )
+						self->client->ps.fd.forcePowerRegenDebounceTime += 7000; //1 point per 7 seconds.. super slow
+					else if (self->client->siegeClass != -1 && (bgSiegeClasses[self->client->siegeClass].classflags & (1<<CFL_FASTFORCEREGEN)))
+						self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(baseRegenTime*0.2, 1); //if this is siege and our player class has the fast force regen ability, then recharge with 1/5th the usual delay
 					else
-						self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(g_forceRegenTime.integer*0.7, 1);
+						self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(baseRegenTime, 1);
 				}
 				else
-					self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(g_forceRegenTime.integer, 1);
+				{
+					if ( level.gametype == GT_POWERDUEL && self->client->sess.duelTeam == DUELTEAM_LONE )
+					{
+						if ( duel_fraglimit.integer )
+							self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(baseRegenTime * (0.6 + (.3 * (float)self->client->sess.wins / (float)duel_fraglimit.integer)), 1);
+						else
+							self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(baseRegenTime*0.7, 1);
+					}
+					else
+						self->client->ps.fd.forcePowerRegenDebounceTime += Q_max(baseRegenTime, 1);
+				}
 			}
 		}
 	}

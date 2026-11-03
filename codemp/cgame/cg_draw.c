@@ -1030,7 +1030,7 @@ void CG_DrawForcePower( menuDef_t *menuHUD )
 	vec4_t			calcColor;
 	float			value,inc,percent;
 	itemDef_t		*focusItem;
-	const int		maxForcePower = 100;
+	int				maxForcePower;
 	qboolean	flash=qfalse;
 
 	// Can we find the menu?
@@ -1038,6 +1038,8 @@ void CG_DrawForcePower( menuDef_t *menuHUD )
 	{
 		return;
 	}
+
+	maxForcePower = cg.snap->ps.stats[STAT_MAX_FORCE] > 0 ? cg.snap->ps.stats[STAT_MAX_FORCE] : 100;
 
 	// Make the hud flash by setting forceHUDTotalFlashTime above cg.time
 	if (cg.forceHUDTotalFlashTime > cg.time )
@@ -1325,8 +1327,6 @@ void CG_DrawHUD(centity_t	*cent)
 	menuDef_t	*menuHUD = NULL;
 	itemDef_t	*focusItem = NULL;
 	const char *scoreStr = NULL;
-	int	scoreBias;
-	char scoreBiasStr[16];
 
 	if (cg_hudFiles.integer)
 	{
@@ -1399,42 +1399,17 @@ void CG_DrawHUD(centity_t	*cent)
 		}
 
 		//scoreStr = va("Score: %i", cgs.clientinfo[cg.snap->ps.clientNum].score);
-		if ( cgs.gametype == GT_DUEL )
-		{//A duel that requires more than one kill to knock the current enemy back to the queue
-			//show current kills out of how many needed
-			scoreStr = va("%s: %i/%i", CG_GetStringEdString("MP_INGAME", "SCORE"), cg.snap->ps.persistant[PERS_SCORE], cgs.fraglimit);
-		}
-		else if (0 && cgs.gametype < GT_TEAM )
-		{	// This is a teamless mode, draw the score bias.
-			scoreBias = cg.snap->ps.persistant[PERS_SCORE] - cgs.scores1;
-			if (scoreBias == 0)
-			{	// We are the leader!
-				if (cgs.scores2 <= 0)
-				{	// Nobody to be ahead of yet.
-					Com_sprintf(scoreBiasStr, sizeof(scoreBiasStr), "");
-				}
-				else
-				{
-					scoreBias = cg.snap->ps.persistant[PERS_SCORE] - cgs.scores2;
-					if (scoreBias == 0)
-					{
-						Com_sprintf(scoreBiasStr, sizeof(scoreBiasStr), " (Tie)");
-					}
-					else
-					{
-						Com_sprintf(scoreBiasStr, sizeof(scoreBiasStr), " (+%d)", scoreBias);
-					}
-				}
+		{
+			int rpgLevel = cg.snap->ps.stats[STAT_RPG_LEVEL] > 0 ? cg.snap->ps.stats[STAT_RPG_LEVEL] : 1;
+			if ( cgs.gametype == GT_DUEL )
+			{//A duel that requires more than one kill to knock the current enemy back to the queue
+				//show current kills out of how many needed
+				scoreStr = va("Lv %i | %s: %i/%i", rpgLevel, CG_GetStringEdString("MP_INGAME", "SCORE"), cg.snap->ps.persistant[PERS_SCORE], cgs.fraglimit);
 			}
-			else // if (scoreBias < 0)
-			{	// We are behind!
-				Com_sprintf(scoreBiasStr, sizeof(scoreBiasStr), " (%d)", scoreBias);
+			else
+			{	// Don't draw a bias.
+				scoreStr = va("Lv %i | %s: %i", rpgLevel, CG_GetStringEdString("MP_INGAME", "SCORE"), cg.snap->ps.persistant[PERS_SCORE]);
 			}
-			scoreStr = va("%s: %i%s", CG_GetStringEdString("MP_INGAME", "SCORE"), cg.snap->ps.persistant[PERS_SCORE], scoreBiasStr);
-		}
-		else
-		{	// Don't draw a bias.
-			scoreStr = va("%s: %i", CG_GetStringEdString("MP_INGAME", "SCORE"), cg.snap->ps.persistant[PERS_SCORE]);
 		}
 
 		menuHUD = Menus_FindByName("righthud");

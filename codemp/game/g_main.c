@@ -297,6 +297,8 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	NPC_InitGame();
 
+	G_RPG_Init();
+
 	TIMER_Clear();
 	//
 	//ICARUS INIT START

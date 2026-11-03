@@ -2286,7 +2286,11 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 	client->pers.maxHealth = health;
 	if ( client->pers.maxHealth < 1 || client->pers.maxHealth > maxHealth )
 		client->pers.maxHealth = 100;
+	if ( client->sess.rpgLevel < 1 )
+		client->sess.rpgLevel = 1;
+	client->pers.maxHealth = (int)( client->pers.maxHealth * G_RPG_GetStatMultiplier( client->sess.rpgLevel ) + 0.5f );
 	client->ps.stats[STAT_MAX_HEALTH] = client->pers.maxHealth;
+	client->ps.stats[STAT_RPG_LEVEL] = client->sess.rpgLevel;
 
 	if ( level.gametype >= GT_TEAM )
 		client->pers.teamInfo = qtrue;
@@ -3353,8 +3357,13 @@ void ClientSpawn(gentity_t *ent) {
 	if ( client->pers.maxHealth < 1 || client->pers.maxHealth > maxHealth ) {
 		client->pers.maxHealth = 100;
 	}
+	if ( client->sess.rpgLevel < 1 ) {
+		client->sess.rpgLevel = 1;
+	}
+	client->pers.maxHealth = (int)( client->pers.maxHealth * G_RPG_GetStatMultiplier( client->sess.rpgLevel ) + 0.5f );
 	// clear entity values
 	client->ps.stats[STAT_MAX_HEALTH] = client->pers.maxHealth;
+	client->ps.stats[STAT_RPG_LEVEL] = client->sess.rpgLevel;
 	client->ps.eFlags = flags;
 	client->mGameFlags = gameFlags;
 
@@ -3699,17 +3708,9 @@ void ClientSpawn(gentity_t *ent) {
 			ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH] = 100;
 		}
 	}
-	else if (client->ps.stats[STAT_MAX_HEALTH] <= 100)
-	{
-		ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH] * 1.25;
-	}
-	else if (client->ps.stats[STAT_MAX_HEALTH] < 125)
-	{
-		ent->health = client->ps.stats[STAT_HEALTH] = 125;
-	}
 	else
 	{
-		ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH];
+		ent->health = client->ps.stats[STAT_HEALTH] = (int)( client->ps.stats[STAT_MAX_HEALTH] * 1.25f );
 	}
 
 	// Start with a small amount of armor as well.

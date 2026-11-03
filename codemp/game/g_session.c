@@ -79,6 +79,8 @@ void G_WriteClientSessionData( gclient_t *client )
 	Q_strcat( s, sizeof( s ), va( "%i ", client->sess.selectedFP ) );
 	Q_strcat( s, sizeof( s ), va( "%i ", client->sess.duelTeam ) );
 	Q_strcat( s, sizeof( s ), va( "%i ", client->sess.siegeDesiredTeam ) );
+	Q_strcat( s, sizeof( s ), va( "%i ", client->sess.rpgLevel ) );
+	Q_strcat( s, sizeof( s ), va( "%i ", client->sess.rpgXP ) );
 	Q_strcat( s, sizeof( s ), va( "%s ", siegeClass ) );
 	Q_strcat( s, sizeof( s ), va( "%s", IP ) );
 
@@ -103,7 +105,7 @@ void G_ReadSessionData( gclient_t *client )
 	var = va( "session%i", client - level.clients );
 	trap->Cvar_VariableStringBuffer( var, s, sizeof(s) );
 
-	sscanf( s, "%i %i %i %i %i %i %i %i %i %i %i %i %s %s",
+	sscanf( s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %s %s",
 		&tempSessionTeam, //&client->sess.sessionTeam,
 		&client->sess.spectatorNum,
 		&tempSpectatorState, //&client->sess.spectatorState,
@@ -116,9 +118,18 @@ void G_ReadSessionData( gclient_t *client )
 		&client->sess.selectedFP,
 		&client->sess.duelTeam,
 		&client->sess.siegeDesiredTeam,
+		&client->sess.rpgLevel,
+		&client->sess.rpgXP,
 		client->sess.siegeClass,
 		client->sess.IP
 		);
+
+	if ( client->sess.rpgLevel < 1 ) {
+		client->sess.rpgLevel = 1;
+	}
+	if ( client->sess.rpgXP < 0 ) {
+		client->sess.rpgXP = 0;
+	}
 
 	client->sess.sessionTeam	= (team_t)tempSessionTeam;
 	client->sess.spectatorState	= (spectatorState_t)tempSpectatorState;
@@ -241,6 +252,8 @@ void G_InitSessionData( gclient_t *client, char *userinfo, qboolean isBot ) {
 	AddTournamentQueue(client);
 
 	sess->siegeClass[0] = 0;
+	sess->rpgLevel = 1;
+	sess->rpgXP = 0;
 
 	G_WriteClientSessionData( client );
 }

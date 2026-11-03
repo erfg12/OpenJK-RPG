@@ -525,6 +525,32 @@ void Svcmd_AddModel_f( void ) {
 	trap->Print( "Added model: %s at <%s %s %s %s>\n", model, origin_number, origin_number2, origin_number3, yaw_number );
 }
 
+void Svcmd_RPG_f( void ) {
+	int			i;
+	gentity_t	*ent;
+	int			maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
+
+	trap->Print( "================ JK-RPG SERVER PLAYERS ================\n" );
+	for ( i = 0; i < level.maxclients; i++ ) {
+		ent = &g_entities[i];
+		if ( !ent->inuse || !ent->client || ent->client->pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		trap->Print( "  [%2d] %s: Level %d/%d | XP: %d/%d | HP: %d/%d | Force: %d/%d\n",
+			i,
+			ent->client->pers.netname_nocolor,
+			ent->client->sess.rpgLevel,
+			maxLevel,
+			ent->client->sess.rpgXP,
+			G_RPG_GetXPForNextLevel( ent->client->sess.rpgLevel ),
+			ent->health,
+			ent->client->ps.stats[STAT_MAX_HEALTH],
+			ent->client->ps.fd.forcePower,
+			ent->client->ps.fd.forcePowerMax );
+	}
+	trap->Print( "=======================================================\n" );
+}
+
 typedef struct svcmd_s {
 	const char	*name;
 	void		(*func)(void);
@@ -546,6 +572,7 @@ svcmd_t svcmds[] = {
 	{ "game_memory",				Svcmd_GameMem_f,					qfalse },
 	{ "listip",						Svcmd_ListIP_f,						qfalse },
 	{ "removeip",					Svcmd_RemoveIP_f,					qfalse },
+	{ "rpg",						Svcmd_RPG_f,						qfalse },
 	{ "say",						Svcmd_Say_f,						qtrue },
 	{ "toggleallowvote",			Svcmd_ToggleAllowVote_f,			qfalse },
 	{ "toggleuserinfovalidation",	Svcmd_ToggleUserinfoValidation_f,	qfalse },
