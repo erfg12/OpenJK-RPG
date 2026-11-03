@@ -3375,6 +3375,305 @@ ClientCommand
 =================
 */
 
+extern void AddSpawnField( char *field, char *value );
+extern void SP_fx_runner( gentity_t *ent );
+extern void SP_jakes_model( gentity_t *ent );
+
+void Cmd_AddEffect_f( gentity_t *ent ) {
+	char			arg1[MAX_STRING_CHARS];
+	gentity_t		*fx_runner;
+	char			savePath[MAX_QPATH];
+	vmCvar_t		mapname;
+	fileHandle_t	f;
+	char			line[256];
+
+	if ( trap->Argc() != 2 ) {
+		trap->SendServerCommand( ent-g_entities, "print \"Usage: /addeffect <fxFile>\n\"" );
+		return;
+	}
+
+	trap->Argv( 1, arg1, sizeof( arg1 ) );
+	fx_runner = G_Spawn();
+	AddSpawnField( "fxFile", arg1 );
+#ifdef __linux__
+	fx_runner->s.origin[2] = (int)ent->client->ps.origin[2];
+#else
+	fx_runner->s.origin[2] = (int)ent->client->ps.origin[2] - 15;
+#endif
+	fx_runner->s.origin[1] = (int)ent->client->ps.origin[1];
+	fx_runner->s.origin[0] = (int)ent->client->ps.origin[0];
+	SP_fx_runner( fx_runner );
+
+	trap->Cvar_Register( &mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM );
+	Com_sprintf( savePath, sizeof( savePath ), "mp_effects/%s.cfg", mapname.string );
+
+	trap->FS_Open( savePath, &f, FS_APPEND );
+	if ( !f ) {
+		return;
+	}
+
+	G_LogPrintf( "AddEffect command has been executed by %s. (%s) <%i %i %i>\n", ent->client->pers.netname, arg1, (int)ent->client->ps.origin[0], (int)ent->client->ps.origin[1], (int)ent->client->ps.origin[2] - 5 );
+	Com_sprintf( line, sizeof( line ), "addeffect %s %i %i %i\n", arg1, (int)ent->client->ps.origin[0], (int)ent->client->ps.origin[1], (int)ent->client->ps.origin[2] - 5 );
+	trap->FS_Write( line, strlen( line ), f );
+	trap->FS_Close( f );
+}
+
+void Cmd_AddEffectTemp_f( gentity_t *ent ) {
+	char		arg1[MAX_STRING_CHARS];
+	gentity_t	*fx_runner;
+
+	if ( trap->Argc() != 2 ) {
+		trap->SendServerCommand( ent-g_entities, "print \"Usage: /addeffecttemp <fxFile>\n\"" );
+		return;
+	}
+
+	trap->Argv( 1, arg1, sizeof( arg1 ) );
+	fx_runner = G_Spawn();
+	AddSpawnField( "fxFile", arg1 );
+#ifdef __linux__
+	fx_runner->s.origin[2] = (int)ent->client->ps.origin[2];
+#else
+	fx_runner->s.origin[2] = (int)ent->client->ps.origin[2] - 15;
+#endif
+	fx_runner->s.origin[1] = (int)ent->client->ps.origin[1];
+	fx_runner->s.origin[0] = (int)ent->client->ps.origin[0];
+	SP_fx_runner( fx_runner );
+}
+
+void Cmd_ClearEffects_f( gentity_t *ent ) {
+	char			savePath[MAX_QPATH];
+	vmCvar_t		mapname;
+	fileHandle_t	f;
+	char			line[256];
+
+	trap->SendServerCommand( ent-g_entities, "print \"Effects have been successfully cleared from this map.\n\"" );
+	trap->Cvar_Register( &mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM );
+	Com_sprintf( savePath, sizeof( savePath ), "mp_effects/%s.cfg", mapname.string );
+
+	trap->FS_Open( savePath, &f, FS_WRITE );
+	if ( !f ) {
+		return;
+	}
+
+	Com_sprintf( line, sizeof( line ), " " );
+	trap->FS_Write( line, strlen( line ), f );
+	trap->FS_Close( f );
+}
+
+void Cmd_AddModel_f( gentity_t *ent ) {
+	char			arg1[MAX_STRING_CHARS];
+	vec3_t			location;
+	vec3_t			angles;
+	gentity_t		*jakes_model;
+	char			savePath[MAX_QPATH];
+	vmCvar_t		mapname;
+	fileHandle_t	f;
+	char			line[256];
+
+	if ( trap->Argc() != 2 ) {
+		trap->SendServerCommand( ent-g_entities, "print \"Usage: /addmodel <model>\n\"" );
+		return;
+	}
+
+	trap->Argv( 1, arg1, sizeof( arg1 ) );
+	jakes_model = G_Spawn();
+
+#ifdef __linux__
+	jakes_model->s.origin[2] = (int)ent->client->ps.origin[2] - 15;
+#else
+	jakes_model->s.origin[2] = (int)ent->client->ps.origin[2] - 25;
+#endif
+	jakes_model->s.origin[1] = (int)ent->client->ps.origin[1];
+	jakes_model->s.origin[0] = (int)ent->client->ps.origin[0];
+
+	ent->client->ps.viewangles[0] = 0.0f;
+	ent->client->ps.viewangles[2] = 0.0f;
+	VectorCopy( ent->client->ps.viewangles, angles );
+	G_SetAngles( jakes_model, angles );
+
+	location[2] = (int)ent->client->ps.origin[2] + 32;
+	location[1] = (int)ent->client->ps.origin[1];
+	location[0] = (int)ent->client->ps.origin[0];
+
+	AddSpawnField( "model", arg1 );
+	SP_jakes_model( jakes_model );
+	TeleportPlayer( ent, location, ent->client->ps.viewangles );
+
+	trap->Cvar_Register( &mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM );
+	Com_sprintf( savePath, sizeof( savePath ), "mp_models/%s.cfg", mapname.string );
+
+	trap->FS_Open( savePath, &f, FS_APPEND );
+	if ( !f ) {
+		return;
+	}
+
+	G_LogPrintf( "AddModel command has been executed by %s. (%s) <%i %i %i %i>\n", ent->client->pers.netname, arg1, (int)ent->client->ps.origin[0], (int)ent->client->ps.origin[1], (int)ent->client->ps.origin[2], (int)ent->client->ps.viewangles[1] );
+	Com_sprintf( line, sizeof( line ), "addmodel %s %i %i %i %i\n", arg1, (int)ent->client->ps.origin[0], (int)ent->client->ps.origin[1], (int)ent->client->ps.origin[2], (int)ent->client->ps.viewangles[1] );
+	trap->FS_Write( line, strlen( line ), f );
+	trap->FS_Close( f );
+}
+
+void Cmd_AddModelTemp_f( gentity_t *ent ) {
+	char		arg1[MAX_STRING_CHARS];
+	vec3_t		location;
+	vec3_t		angles;
+	gentity_t	*jakes_model;
+
+	if ( trap->Argc() != 2 ) {
+		trap->SendServerCommand( ent-g_entities, "print \"Usage: /addmodeltemp <model>\n\"" );
+		return;
+	}
+
+	trap->Argv( 1, arg1, sizeof( arg1 ) );
+	jakes_model = G_Spawn();
+
+#ifdef __linux__
+	jakes_model->s.origin[2] = (int)ent->client->ps.origin[2] - 15;
+#else
+	jakes_model->s.origin[2] = (int)ent->client->ps.origin[2] - 25;
+#endif
+	jakes_model->s.origin[1] = (int)ent->client->ps.origin[1];
+	jakes_model->s.origin[0] = (int)ent->client->ps.origin[0];
+
+	ent->client->ps.viewangles[0] = 0.0f;
+	ent->client->ps.viewangles[2] = 0.0f;
+	VectorCopy( ent->client->ps.viewangles, angles );
+	G_SetAngles( jakes_model, angles );
+
+	location[2] = (int)ent->client->ps.origin[2] + 32;
+	location[1] = (int)ent->client->ps.origin[1];
+	location[0] = (int)ent->client->ps.origin[0];
+
+	AddSpawnField( "model", arg1 );
+	SP_jakes_model( jakes_model );
+	TeleportPlayer( ent, location, ent->client->ps.viewangles );
+}
+
+void Cmd_ClearModels_f( gentity_t *ent ) {
+	char			savePath[MAX_QPATH];
+	vmCvar_t		mapname;
+	fileHandle_t	f;
+	char			line[256];
+
+	trap->SendServerCommand( ent-g_entities, "print \"Models have been successfully cleared from this map.\n\"" );
+	trap->Cvar_Register( &mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM );
+	Com_sprintf( savePath, sizeof( savePath ), "mp_models/%s.cfg", mapname.string );
+
+	trap->FS_Open( savePath, &f, FS_WRITE );
+	if ( !f ) {
+		return;
+	}
+
+	Com_sprintf( line, sizeof( line ), " " );
+	trap->FS_Write( line, strlen( line ), f );
+	trap->FS_Close( f );
+}
+
+#define LISTFILES_PER_PAGE 150
+
+static void G_ListFiles_f( gentity_t *ent, const char *cmdName, const char *baseDir, const char *extension, const char *prefix, qboolean stripExt ) {
+	static char	filelist[65536];
+	char		filter[MAX_QPATH] = { 0 };
+	char		arg[MAX_QPATH] = { 0 };
+	char		entry[MAX_QPATH];
+	char		display[MAX_QPATH];
+	char		outBuf[960] = { 0 };
+	char		*fileptr;
+	int			numFiles, i, filelen;
+	int			page = 1, totalMatches = 0, totalPages = 1;
+	int			matchIndex = 0, startIndex, endIndex;
+
+	if ( trap->Argc() >= 3 ) {
+		trap->Argv( 1, filter, sizeof( filter ) );
+		trap->Argv( 2, arg, sizeof( arg ) );
+		page = atoi( arg );
+	} else if ( trap->Argc() == 2 ) {
+		trap->Argv( 1, arg, sizeof( arg ) );
+		if ( Q_isanumber( arg ) && atoi( arg ) > 0 ) {
+			page = atoi( arg );
+		} else {
+			Q_strncpyz( filter, arg, sizeof( filter ) );
+		}
+	}
+
+	numFiles = trap->FS_GetFileList( baseDir, extension, filelist, sizeof( filelist ) );
+
+	fileptr = filelist;
+	for ( i = 0; i < numFiles; i++, fileptr += filelen + 1 ) {
+		filelen = (int)strlen( fileptr );
+		if ( stripExt ) {
+			COM_StripExtension( fileptr, entry, sizeof( entry ) );
+		} else {
+			Q_strncpyz( entry, fileptr, sizeof( entry ) );
+		}
+		Com_sprintf( display, sizeof( display ), "%s%s", prefix, entry );
+
+		if ( filter[0] && !Q_stristr( display, filter ) ) {
+			continue;
+		}
+		totalMatches++;
+	}
+
+	if ( totalMatches == 0 ) {
+		if ( filter[0] ) {
+			trap->SendServerCommand( ent-g_entities, va( "print \"No matching files found for '%s'.\n\"", filter ) );
+		} else {
+			trap->SendServerCommand( ent-g_entities, "print \"No files found.\n\"" );
+		}
+		return;
+	}
+
+	totalPages = ( totalMatches + LISTFILES_PER_PAGE - 1 ) / LISTFILES_PER_PAGE;
+	page = Com_Clampi( 1, totalPages, page );
+	startIndex = ( page - 1 ) * LISTFILES_PER_PAGE;
+	endIndex = startIndex + LISTFILES_PER_PAGE;
+	if ( endIndex > totalMatches ) {
+		endIndex = totalMatches;
+	}
+
+	fileptr = filelist;
+	for ( i = 0; i < numFiles; i++, fileptr += filelen + 1 ) {
+		char line[MAX_QPATH + 8];
+
+		filelen = (int)strlen( fileptr );
+		if ( stripExt ) {
+			COM_StripExtension( fileptr, entry, sizeof( entry ) );
+		} else {
+			Q_strncpyz( entry, fileptr, sizeof( entry ) );
+		}
+		Com_sprintf( display, sizeof( display ), "%s%s", prefix, entry );
+
+		if ( filter[0] && !Q_stristr( display, filter ) ) {
+			continue;
+		}
+
+		if ( matchIndex >= startIndex && matchIndex < endIndex ) {
+			Com_sprintf( line, sizeof( line ), "  ^2%s^7\n", display );
+			if ( strlen( outBuf ) + strlen( line ) >= sizeof( outBuf ) - 1 ) {
+				trap->SendServerCommand( ent-g_entities, va( "print \"%s\"", outBuf ) );
+				outBuf[0] = '\0';
+			}
+			Q_strcat( outBuf, sizeof( outBuf ), line );
+		}
+		matchIndex++;
+	}
+
+	if ( outBuf[0] ) {
+		trap->SendServerCommand( ent-g_entities, va( "print \"%s\"", outBuf ) );
+	}
+
+	trap->SendServerCommand( ent-g_entities, va( "print \"^3--- Showing %d-%d of %d (Page %d/%d) | Usage: /%s [filter] [page] ---^7\n\"",
+		startIndex + 1, endIndex, totalMatches, page, totalPages, cmdName ) );
+}
+
+void Cmd_ListEffects_f( gentity_t *ent ) {
+	G_ListFiles_f( ent, "listeffects", "effects", ".efx", "", qtrue );
+}
+
+void Cmd_ListModels_f( gentity_t *ent ) {
+	G_ListFiles_f( ent, "listmodels", "models/map_objects", ".md3", "models/map_objects/", qfalse );
+}
+
 #define CMD_NOINTERMISSION		(1<<0)
 #define CMD_CHEAT				(1<<1)
 #define CMD_ALIVE				(1<<2)
@@ -3391,8 +3690,14 @@ int cmdcmp( const void *a, const void *b ) {
 
 command_t commands[] = {
 	{ "addbot",				Cmd_AddBot_f,				0 },
+	{ "addeffect",			Cmd_AddEffect_f,			CMD_ALIVE|CMD_NOINTERMISSION },
+	{ "addeffecttemp",		Cmd_AddEffectTemp_f,		CMD_ALIVE|CMD_NOINTERMISSION },
+	{ "addmodel",			Cmd_AddModel_f,				CMD_ALIVE|CMD_NOINTERMISSION },
+	{ "addmodeltemp",		Cmd_AddModelTemp_f,			CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "callteamvote",		Cmd_CallTeamVote_f,			CMD_NOINTERMISSION },
 	{ "callvote",			Cmd_CallVote_f,				CMD_NOINTERMISSION },
+	{ "cleareffects",		Cmd_ClearEffects_f,			CMD_NOINTERMISSION },
+	{ "clearmodels",		Cmd_ClearModels_f,			CMD_NOINTERMISSION },
 	{ "debugBMove_Back",	Cmd_BotMoveBack_f,			CMD_CHEAT|CMD_ALIVE },
 	{ "debugBMove_Forward",	Cmd_BotMoveForward_f,		CMD_CHEAT|CMD_ALIVE },
 	{ "debugBMove_Left",	Cmd_BotMoveLeft_f,			CMD_CHEAT|CMD_ALIVE },
@@ -3411,10 +3716,12 @@ command_t commands[] = {
 	{ "killother",			Cmd_KillOther_f,			CMD_CHEAT|CMD_NOINTERMISSION },
 //	{ "kylesmash",			TryGrapple,					0 },
 	{ "levelshot",			Cmd_LevelShot_f,			CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
+	{ "listeffects",		Cmd_ListEffects_f,			CMD_NOINTERMISSION },
+	{ "listmodels",			Cmd_ListModels_f,			CMD_NOINTERMISSION },
 	{ "maplist",			Cmd_MapList_f,				CMD_NOINTERMISSION },
 	{ "noclip",				Cmd_Noclip_f,				CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "notarget",			Cmd_Notarget_f,				CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
-	{ "npc",				Cmd_NPC_f,					CMD_CHEAT|CMD_ALIVE },
+	{ "npc",				Cmd_NPC_f,					CMD_ALIVE },
 	{ "say",				Cmd_Say_f,					0 },
 	{ "say_team",			Cmd_SayTeam_f,				0 },
 	{ "score",				Cmd_Score_f,				0 },

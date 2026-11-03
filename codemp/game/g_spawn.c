@@ -315,6 +315,7 @@ void SP_misc_model_ammo_power_converter( gentity_t *ent );
 void SP_misc_model_health_power_converter( gentity_t *ent );
 
 void SP_fx_runner( gentity_t *ent );
+void SP_jakes_model( gentity_t *ent );
 
 void SP_target_screenshake(gentity_t *ent);
 void SP_target_escapetrig(gentity_t *ent);
@@ -535,6 +536,7 @@ spawn_t	spawns[] = {
 	{ "info_siege_objective",				SP_info_siege_objective },
 	{ "info_siege_radaricon",				SP_info_siege_radaricon },
 	{ "item_botroam",						SP_item_botroam },
+	{ "jakes_models",						SP_jakes_model },
 	{ "light",								SP_light },
 	{ "misc_ammo_floor_unit",				SP_misc_ammo_floor_unit },
 	{ "misc_bsp",							SP_misc_bsp },

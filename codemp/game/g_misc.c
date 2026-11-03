@@ -3018,6 +3018,23 @@ void SP_misc_faller(gentity_t *ent)
 }
 
 //rww - ref tag stuff ported from SP (and C-ified)
+
+void SP_jakes_model( gentity_t *ent ) //cm - Jake
+{
+	char *model;
+	G_SpawnString( "model", "", &model );
+	ent->s.eType = ET_GENERAL;
+	ent->s.modelindex = G_ModelIndex( model );
+	ent->s.modelindex2 = G_ModelIndex( model );
+	ent->r.contents = CONTENTS_SOLID;
+	ent->clipmask = MASK_SOLID;
+	G_SetOrigin( ent, ent->s.origin );
+	VectorCopy( ent->s.angles, ent->s.apos.trBase );
+	VectorSet( ent->r.maxs, 25, 25, 21 ); //This is our non-walkthroughable box.
+	VectorScale( ent->r.maxs, -1, ent->r.mins );
+
+	trap->LinkEntity( (sharedEntity_t *)ent );
+}
 #define	TAG_GENERIC_NAME	"__WORLD__"	//If a designer chooses this name, cut a finger off as an example to the others
 
 //MAX_TAG_OWNERS is 16 for now in order to not use too much VM memory.

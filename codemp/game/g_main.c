@@ -411,6 +411,8 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 		}
 	}
 
+	trap->SendConsoleCommand( EXEC_INSERT, va( "exec mp_models/%s ; wait ; wait ; exec mp_effects/%s\n", level.rawmapname, level.rawmapname ) );
+
 	if ( level.gametype == GT_JEDIMASTER ) {
 		gentity_t *ent = NULL;
 		int i=0;

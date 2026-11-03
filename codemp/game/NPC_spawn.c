@@ -1742,6 +1742,17 @@ finish:
 		G_SetOrigin( ent, saveOrg );
 	}
 
+	if ( !(newent->spawnflags & SFB_NOTSOLID) )
+	{
+		if ( NPC_SpotWouldTelefrag( newent ) )
+		{
+			newent->think = G_FreeEntity;
+			newent->nextthink = level.time + 100;
+			G_FreeEntity( newent );
+			return NULL;
+		}
+	}
+
 	return newent;
 }
 
@@ -4095,7 +4106,49 @@ gentity_t *NPC_SpawnType( gentity_t *ent, char *npc_type, char *targetname, qboo
 		NPC_Wampa_Precache();
 	}
 
-	return (NPC_Spawn_Do( NPCspawner ));
+	{
+		gentity_t *spawned = NPC_Spawn_Do( NPCspawner );
+		float dist = 128.0f;
+		int i;
+
+		for ( i = 1; i < 4 && spawned == NULL; i++, dist *= 2.0f )
+		{
+			NPCspawner = G_Spawn();
+			if ( !NPCspawner )
+			{
+				return NULL;
+			}
+			NPCspawner->think = G_FreeEntity;
+			NPCspawner->nextthink = level.time + FRAMETIME;
+			AngleVectors( ent->client->ps.viewangles, forward, NULL, NULL );
+			VectorNormalize( forward );
+			VectorMA( ent->r.currentOrigin, dist, forward, end );
+			trap->Trace( &trace, ent->r.currentOrigin, NULL, NULL, end, 0, MASK_SOLID, qfalse, 0, 0 );
+			VectorCopy( trace.endpos, end );
+			end[2] -= 24 * ( i + 1 );
+			trap->Trace( &trace, trace.endpos, NULL, NULL, end, 0, MASK_SOLID, qfalse, 0, 0 );
+			VectorCopy( trace.endpos, end );
+			end[2] += 24 * ( i + 1 );
+			G_SetOrigin( NPCspawner, end );
+			VectorCopy( NPCspawner->r.currentOrigin, NPCspawner->s.origin );
+			NPCspawner->s.angles[1] = ent->client->ps.viewangles[1];
+			trap->LinkEntity( (sharedEntity_t *)NPCspawner );
+			NPCspawner->NPC_type = G_NewString( npc_type );
+			if ( targetname )
+			{
+				NPCspawner->NPC_targetname = G_NewString( targetname );
+			}
+			NPCspawner->count = 1;
+			NPCspawner->delay = 0;
+			if ( isVehicle )
+			{
+				NPCspawner->classname = "NPC_Vehicle";
+			}
+			spawned = NPC_Spawn_Do( NPCspawner );
+		}
+
+		return spawned;
+	}
 }
 
 void NPC_Spawn_f( gentity_t *ent )
@@ -4123,6 +4176,14 @@ void NPC_Spawn_f( gentity_t *ent )
 NPC_Kill_f
 */
 extern stringID_table_t TeamTable[];
+static stringID_table_t TeamTable2[] =
+{
+	{ "free", NPCTEAM_FREE },
+	{ "player", NPCTEAM_PLAYER },
+	{ "enemy", NPCTEAM_ENEMY },
+	{ "neutral", NPCTEAM_NEUTRAL },
+	{ "", -1 }
+};
 void NPC_Kill_f( void )
 {
 	int			n;
@@ -4166,7 +4227,11 @@ void NPC_Kill_f( void )
 		}
 		else
 		{
-			killTeam = GetIDForString( TeamTable, name );
+			killTeam = (npcteam_t)GetIDForString( TeamTable2, name );
+			if ( killTeam == (npcteam_t)-1 )
+			{
+				killTeam = (npcteam_t)GetIDForString( TeamTable, name );
+			}
 
 			if ( killTeam == NPCTEAM_FREE )
 			{
@@ -4277,6 +4342,15 @@ void Cmd_NPC_f( gentity_t *ent )
 	}
 	else if ( Q_stricmp( cmd, "spawn" ) == 0 )
 	{
+		if ( ent && ent->client && ent->client->ps.duelInProgress )
+		{
+			trap->SendServerCommand( ent-g_entities, "print \"You cannot spawn NPCs while in a duel.\n\"" );
+			return;
+		}
+		if ( ent && ent->client )
+		{
+			G_LogPrintf( "NPC command executed by %s.\n", ent->client->pers.netname );
+		}
 		NPC_Spawn_f( ent );
 	}
 	else if ( Q_stricmp( cmd, "kill" ) == 0 )

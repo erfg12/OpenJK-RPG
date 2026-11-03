@@ -468,6 +468,62 @@ void Svcmd_Say_f( void ) {
 	trap->SendServerCommand( -1, va("print \"server: %s\n\"", text ) );
 }
 
+extern void AddSpawnField( char *field, char *value );
+extern void SP_fx_runner( gentity_t *ent );
+extern void SP_jakes_model( gentity_t *ent );
+
+void Svcmd_AddEffect_f( void ) {
+	gentity_t	*fx_runner;
+	char		effect[MAX_STRING_CHARS];
+	char		origin_number[MAX_STRING_CHARS];
+	char		origin_number2[MAX_STRING_CHARS];
+	char		origin_number3[MAX_STRING_CHARS];
+
+	if ( trap->Argc() != 5 ) {
+		trap->Print( "Usage: addeffect <fxFile> <x> <y> <z>\n" );
+		return;
+	}
+
+	fx_runner = G_Spawn();
+	trap->Argv( 1, effect, sizeof( effect ) );
+	AddSpawnField( "fxFile", effect );
+	trap->Argv( 2, origin_number, sizeof( origin_number ) );
+	fx_runner->s.origin[0] = atoi( origin_number );
+	trap->Argv( 3, origin_number2, sizeof( origin_number2 ) );
+	fx_runner->s.origin[1] = atoi( origin_number2 );
+	trap->Argv( 4, origin_number3, sizeof( origin_number3 ) );
+	fx_runner->s.origin[2] = atoi( origin_number3 ) - 5;
+	SP_fx_runner( fx_runner );
+}
+
+void Svcmd_AddModel_f( void ) {
+	gentity_t	*jakes_model;
+	char		model[MAX_STRING_CHARS];
+	char		origin_number[MAX_STRING_CHARS];
+	char		origin_number2[MAX_STRING_CHARS];
+	char		origin_number3[MAX_STRING_CHARS];
+	char		yaw_number[MAX_STRING_CHARS];
+
+	if ( trap->Argc() != 6 ) {
+		trap->Print( "Usage: addmodel <model> <x> <y> <z> <yaw>\n" );
+		return;
+	}
+
+	jakes_model = G_Spawn();
+	trap->Argv( 1, model, sizeof( model ) );
+	AddSpawnField( "model", model );
+	trap->Argv( 2, origin_number, sizeof( origin_number ) );
+	jakes_model->s.origin[0] = atoi( origin_number );
+	trap->Argv( 3, origin_number2, sizeof( origin_number2 ) );
+	jakes_model->s.origin[1] = atoi( origin_number2 );
+	trap->Argv( 4, origin_number3, sizeof( origin_number3 ) );
+	jakes_model->s.origin[2] = atoi( origin_number3 ) - 60;
+	trap->Argv( 5, yaw_number, sizeof( yaw_number ) );
+	jakes_model->s.angles[1] = atoi( yaw_number );
+	SP_jakes_model( jakes_model );
+	trap->Print( "Added model: %s at <%s %s %s %s>\n", model, origin_number, origin_number2, origin_number3, yaw_number );
+}
+
 typedef struct svcmd_s {
 	const char	*name;
 	void		(*func)(void);
@@ -480,7 +536,9 @@ int svcmdcmp( const void *a, const void *b ) {
 
 svcmd_t svcmds[] = {
 	{ "addbot",						Svcmd_AddBot_f,						qfalse },
+	{ "addeffect",					Svcmd_AddEffect_f,					qfalse },
 	{ "addip",						Svcmd_AddIP_f,						qfalse },
+	{ "addmodel",					Svcmd_AddModel_f,					qfalse },
 	{ "botlist",					Svcmd_BotList_f,					qfalse },
 	{ "entitylist",					Svcmd_EntityList_f,					qfalse },
 	{ "forceteam",					Svcmd_ForceTeam_f,					qfalse },
