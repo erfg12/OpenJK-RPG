@@ -511,6 +511,7 @@ void Svcmd_AddModel_f( void ) {
 
 	jakes_model = G_Spawn();
 	trap->Argv( 1, model, sizeof( model ) );
+	COM_DefaultExtension( model, sizeof( model ), ".md3" );
 	AddSpawnField( "model", model );
 	trap->Argv( 2, origin_number, sizeof( origin_number ) );
 	jakes_model->s.origin[0] = atoi( origin_number );

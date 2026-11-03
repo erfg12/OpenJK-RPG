@@ -3476,6 +3476,7 @@ void Cmd_AddModel_f( gentity_t *ent ) {
 	}
 
 	trap->Argv( 1, arg1, sizeof( arg1 ) );
+	COM_DefaultExtension( arg1, sizeof( arg1 ), ".md3" );
 	jakes_model = G_Spawn();
 
 #ifdef __linux__
@@ -3525,6 +3526,7 @@ void Cmd_AddModelTemp_f( gentity_t *ent ) {
 	}
 
 	trap->Argv( 1, arg1, sizeof( arg1 ) );
+	COM_DefaultExtension( arg1, sizeof( arg1 ), ".md3" );
 	jakes_model = G_Spawn();
 
 #ifdef __linux__
