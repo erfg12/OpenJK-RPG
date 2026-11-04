@@ -403,6 +403,8 @@ struct gentity_s {
 	int			useDebounceTime;	// for cultist_destroyer
 	gentity_t	*npcRespawner;		// for MMORPG respawning NPCs / spawners
 	int			npcLevel;			// RPG level for NPCs / spawners
+	vec3_t		baseMins;			// unscaled collision mins for NPCs
+	vec3_t		baseMaxs;			// unscaled collision maxs for NPCs
 };
 
 #define DAMAGEREDIRECT_HEAD		1
@@ -1542,6 +1544,13 @@ float G_RPG_GetStatMultiplier( int level );
 void G_RPG_AddXP( gentity_t *player, const char *npcType, int xp );
 void Cmd_RPGStats_f( gentity_t *ent );
 gentity_t *NPC_SpawnAtSpot( const char *npc_type, vec3_t origin, float yaw, int npcLevel );
-gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName, int npcLevel );
+gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName, int npcLevel, const int *customRGBA, int modelScale );
+qboolean G_IsNPCTintable( const char *npcType, gentity_t *ent );
+qboolean G_ParseScaleString( const char *str, int *outScale );
+void G_ApplyNPCScale( gentity_t *ent, int scalePercent );
+qboolean G_ParseLevelNameRGBA( int startArg, int *outLevel, char *outName, int nameSize, int outRGBA[4], int *outScale );
+gentity_t *G_GetTargetNPC( gentity_t *ent );
+void Cmd_ListNPCs_f( gentity_t *ent );
+extern char NPCParms[];
 
 extern gameImport_t *trap;

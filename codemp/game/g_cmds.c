@@ -3574,104 +3574,7 @@ void Cmd_ClearModels_f( gentity_t *ent ) {
 
 extern gentity_t *NPC_SpawnType( gentity_t *ent, char *npc_type, char *targetname, qboolean isVehicle );
 
-static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
-	char			npc_type[MAX_STRING_CHARS];
-	char			timeArg[MAX_STRING_CHARS];
-	char			customName[MAX_STRING_CHARS] = { 0 };
-	int				respawnSeconds;
-	int				npcLevel = 1;
-	int				maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
-	char			arg3[MAX_STRING_CHARS];
-	gentity_t		*spawned;
-	char			savePath[MAX_QPATH];
-	vmCvar_t		mapname;
-	fileHandle_t	f;
-	char			line[512];
-
-	if ( trap->Argc() < 3 ) {
-		trap->SendServerCommand( ent-g_entities, va( "print \"Usage: /%s <npc_type> <seconds> [level] [name]\n\"", saveToFile ? "addrespawn" : "addrespawntemp" ) );
-		return;
-	}
-
-	if ( ent->client->ps.duelInProgress ) {
-		trap->SendServerCommand( ent-g_entities, "print \"You cannot spawn NPCs while in a duel.\n\"" );
-		return;
-	}
-
-	trap->Argv( 1, npc_type, sizeof( npc_type ) );
-	trap->Argv( 2, timeArg, sizeof( timeArg ) );
-	if ( trap->Argc() >= 4 ) {
-		trap->Argv( 3, arg3, sizeof( arg3 ) );
-		if ( Q_isanumber( arg3 ) && atoi( arg3 ) > 0 ) {
-			npcLevel = Com_Clampi( 1, maxLevel, atoi( arg3 ) );
-			if ( trap->Argc() >= 5 ) {
-				Q_strncpyz( customName, ConcatArgs( 4 ), sizeof( customName ) );
-			}
-		} else {
-			Q_strncpyz( customName, ConcatArgs( 3 ), sizeof( customName ) );
-		}
-	}
-	respawnSeconds = atoi( timeArg );
-	if ( respawnSeconds < 1 ) {
-		respawnSeconds = 1;
-	}
-
-	spawned = NPC_SpawnType( ent, npc_type, customName[0] ? customName : NULL, qfalse );
-	if ( !spawned ) {
-		trap->SendServerCommand( ent-g_entities, va( "print \"^1Failed to spawn NPC '%s'.^7\n\"", npc_type ) );
-		return;
-	}
-
-	G_CreateNPCRespawner( npc_type, respawnSeconds, spawned->r.currentOrigin, ent->client->ps.viewangles[YAW], spawned, customName[0] ? customName : NULL, npcLevel );
-	if ( customName[0] ) {
-		trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' named '^3%s^2' (Lv. %d, respawns every %ds).^7\n\"", npc_type, customName, npcLevel, respawnSeconds ) );
-	} else {
-		trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' (Lv. %d, respawns every %ds).^7\n\"", npc_type, npcLevel, respawnSeconds ) );
-	}
-
-	if ( !saveToFile ) {
-		return;
-	}
-
-	trap->Cvar_Register( &mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM );
-	Com_sprintf( savePath, sizeof( savePath ), "mp_respawns/%s.cfg", mapname.string );
-
-	trap->FS_Open( savePath, &f, FS_APPEND );
-	if ( !f ) {
-		return;
-	}
-
-	G_LogPrintf( "AddRespawn command has been executed by %s. (%s%s%s, %ds) <%i %i %i %i>\n",
-		ent->client->pers.netname, npc_type, customName[0] ? " / " : "", customName, respawnSeconds,
-		(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
-	if ( customName[0] ) {
-		Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i \"%s\"\n",
-			npc_type, respawnSeconds,
-			(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW], npcLevel, customName );
-	} else {
-		Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i\n",
-			npc_type, respawnSeconds,
-			(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW], npcLevel );
-	}
-	if ( 0 ) {
-		Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i\n",
-			npc_type, respawnSeconds,
-			(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
-	}
-	trap->FS_Write( line, strlen( line ), f );
-	trap->FS_Close( f );
-}
-
-void Cmd_AddRespawn_f( gentity_t *ent ) {
-	G_AddRespawnInternal( ent, qtrue );
-}
-
-void Cmd_AddRespawnTemp_f( gentity_t *ent ) {
-	G_AddRespawnInternal( ent, qfalse );
-}
-
-void Cmd_NPCName_f( gentity_t *ent ) {
-	char		*newName;
+gentity_t *G_GetTargetNPC( gentity_t *ent ) {
 	trace_t		tr;
 	vec3_t		start, forward, end;
 	vec3_t		mins = { -10.0f, -10.0f, -10.0f };
@@ -3679,18 +3582,7 @@ void Cmd_NPCName_f( gentity_t *ent ) {
 	gentity_t	*targetEnt = NULL;
 
 	if ( !ent || !ent->client ) {
-		return;
-	}
-
-	if ( trap->Argc() < 2 ) {
-		trap->SendServerCommand( ent - g_entities, "print \"Usage: /npcname <Custom Name> (aim at an NPC to rename it)\n\"" );
-		return;
-	}
-
-	newName = ConcatArgs( 1 );
-	if ( !newName || !newName[0] ) {
-		trap->SendServerCommand( ent - g_entities, "print \"Usage: /npcname <Custom Name> (aim at an NPC to rename it)\n\"" );
-		return;
+		return NULL;
 	}
 
 	VectorCopy( ent->client->ps.origin, start );
@@ -3709,7 +3601,160 @@ void Cmd_NPCName_f( gentity_t *ent ) {
 		}
 	}
 
-	if ( !targetEnt || !targetEnt->inuse || ( targetEnt->s.eType != ET_NPC && !targetEnt->NPC ) ) {
+	if ( targetEnt && targetEnt->inuse && ( targetEnt->s.eType == ET_NPC || targetEnt->NPC ) ) {
+		return targetEnt;
+	}
+
+	return NULL;
+}
+
+static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
+	char			npc_type[MAX_STRING_CHARS];
+	char			timeArg[MAX_STRING_CHARS];
+	char			customName[MAX_STRING_CHARS] = { 0 };
+	int				respawnSeconds;
+	int				npcLevel = 1;
+	int				customRGBA[4] = { 0 };
+	int				modelScale = 100;
+	qboolean		hasCustomColor = qfalse;
+	gentity_t		*spawned;
+	char			savePath[MAX_QPATH];
+	vmCvar_t		mapname;
+	fileHandle_t	f;
+	char			line[512];
+
+	if ( trap->Argc() < 3 ) {
+		trap->SendServerCommand( ent-g_entities, va( "print \"Usage: /%s <npc_type> <seconds> [level] [name] [scale] [r g b [a]]\n\"", saveToFile ? "addrespawn" : "addrespawntemp" ) );
+		return;
+	}
+
+	if ( ent->client->ps.duelInProgress ) {
+		trap->SendServerCommand( ent-g_entities, "print \"You cannot spawn NPCs while in a duel.\n\"" );
+		return;
+	}
+
+	trap->Argv( 1, npc_type, sizeof( npc_type ) );
+	trap->Argv( 2, timeArg, sizeof( timeArg ) );
+	respawnSeconds = atoi( timeArg );
+	if ( respawnSeconds < 1 ) {
+		respawnSeconds = 1;
+	}
+
+	hasCustomColor = G_ParseLevelNameRGBA( 3, &npcLevel, customName, sizeof( customName ), customRGBA, &modelScale );
+
+	spawned = NPC_SpawnType( ent, npc_type, customName[0] ? customName : NULL, qfalse );
+	if ( !spawned ) {
+		trap->SendServerCommand( ent-g_entities, va( "print \"^1Failed to spawn NPC '%s'.^7\n\"", npc_type ) );
+		return;
+	}
+
+	G_CreateNPCRespawner( npc_type, respawnSeconds, spawned->r.currentOrigin, ent->client->ps.viewangles[YAW], spawned, customName[0] ? customName : NULL, npcLevel, hasCustomColor ? customRGBA : NULL, modelScale );
+	if ( modelScale > 0 && modelScale != 100 ) {
+		if ( customName[0] ) {
+			trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' named '^3%s^2' (Lv. %d, Scale: %d%%, respawns every %ds).^7\n\"", npc_type, customName, npcLevel, modelScale, respawnSeconds ) );
+		} else {
+			trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' (Lv. %d, Scale: %d%%, respawns every %ds).^7\n\"", npc_type, npcLevel, modelScale, respawnSeconds ) );
+		}
+	} else {
+		if ( customName[0] ) {
+			trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' named '^3%s^2' (Lv. %d, respawns every %ds).^7\n\"", npc_type, customName, npcLevel, respawnSeconds ) );
+		} else {
+			trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' (Lv. %d, respawns every %ds).^7\n\"", npc_type, npcLevel, respawnSeconds ) );
+		}
+	}
+
+	if ( hasCustomColor ) {
+		qboolean tintable = G_IsNPCTintable( npc_type, spawned );
+		if ( !tintable ) {
+			trap->SendServerCommand( ent-g_entities, "print \"^3Note: This NPC model does not use customizable shaders in base assets; custom color may not show without a custom skin.^7\n\"" );
+		}
+	}
+
+	if ( !saveToFile ) {
+		return;
+	}
+
+	trap->Cvar_Register( &mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM );
+	Com_sprintf( savePath, sizeof( savePath ), "mp_respawns/%s.cfg", mapname.string );
+
+	trap->FS_Open( savePath, &f, FS_APPEND );
+	if ( !f ) {
+		return;
+	}
+
+	G_LogPrintf( "AddRespawn command has been executed by %s. (%s%s%s, %ds) <%i %i %i %i>\n",
+		ent->client->pers.netname, npc_type, customName[0] ? " / " : "", customName, respawnSeconds,
+		(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
+
+	if ( modelScale > 0 && modelScale != 100 ) {
+		if ( hasCustomColor ) {
+			Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i \"%s\" scale=%i %i %i %i %i\n",
+				npc_type, respawnSeconds,
+				(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW],
+				npcLevel, customName[0] ? customName : "",
+				modelScale,
+				customRGBA[0], customRGBA[1], customRGBA[2], customRGBA[3] );
+		} else if ( customName[0] ) {
+			Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i \"%s\" scale=%i\n",
+				npc_type, respawnSeconds,
+				(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW],
+				npcLevel, customName, modelScale );
+		} else {
+			Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i \"\" scale=%i\n",
+				npc_type, respawnSeconds,
+				(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW],
+				npcLevel, modelScale );
+		}
+	} else {
+		if ( hasCustomColor ) {
+			Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i \"%s\" %i %i %i %i\n",
+				npc_type, respawnSeconds,
+				(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW],
+				npcLevel, customName[0] ? customName : "",
+				customRGBA[0], customRGBA[1], customRGBA[2], customRGBA[3] );
+		} else if ( customName[0] ) {
+			Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i \"%s\"\n",
+				npc_type, respawnSeconds,
+				(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW], npcLevel, customName );
+		} else {
+			Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i\n",
+				npc_type, respawnSeconds,
+				(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW], npcLevel );
+		}
+	}
+	trap->FS_Write( line, strlen( line ), f );
+	trap->FS_Close( f );
+}
+
+void Cmd_AddRespawn_f( gentity_t *ent ) {
+	G_AddRespawnInternal( ent, qtrue );
+}
+
+void Cmd_AddRespawnTemp_f( gentity_t *ent ) {
+	G_AddRespawnInternal( ent, qfalse );
+}
+
+void Cmd_NPCName_f( gentity_t *ent ) {
+	char		*newName;
+	gentity_t	*targetEnt = NULL;
+
+	if ( !ent || !ent->client ) {
+		return;
+	}
+
+	if ( trap->Argc() < 2 ) {
+		trap->SendServerCommand( ent - g_entities, "print \"Usage: /npcname <Custom Name> (aim at an NPC to rename it)\n\"" );
+		return;
+	}
+
+	newName = ConcatArgs( 1 );
+	if ( !newName || !newName[0] ) {
+		trap->SendServerCommand( ent - g_entities, "print \"Usage: /npcname <Custom Name> (aim at an NPC to rename it)\n\"" );
+		return;
+	}
+
+	targetEnt = G_GetTargetNPC( ent );
+	if ( !targetEnt ) {
 		trap->SendServerCommand( ent - g_entities, "print \"You must be aiming at an NPC to set its name.\n\"" );
 		return;
 	}
@@ -3722,6 +3767,240 @@ void Cmd_NPCName_f( gentity_t *ent ) {
 
 	trap->SendServerCommand( ent - g_entities, va( "print \"Renamed %s to \\\"^3%s^7\\\".\n\"",
 		targetEnt->NPC_type ? targetEnt->NPC_type : "NPC", targetEnt->targetname ) );
+}
+
+void Cmd_NPCInfo_f( gentity_t *ent ) {
+	gentity_t	*targetEnt = NULL;
+	char		queryType[MAX_STRING_CHARS] = { 0 };
+	const char	*npcType = NULL;
+	const char	*npcName = NULL;
+	qboolean	tintable = qfalse;
+	int			r, g, b, a;
+
+	if ( !ent || !ent->client ) {
+		return;
+	}
+
+	if ( trap->Argc() >= 2 ) {
+		trap->Argv( 1, queryType, sizeof( queryType ) );
+		tintable = G_IsNPCTintable( queryType, NULL );
+		trap->SendServerCommand( ent - g_entities, va( "print \"^5=== NPC Type Info: ^3%s ^5===\n\"", queryType ) );
+		if ( tintable ) {
+			trap->SendServerCommand( ent - g_entities, "print \"^7Tintable: ^2Yes ^7(unmodded client compatible via customRGBA)\n\"" );
+			trap->SendServerCommand( ent - g_entities, "print \"^7Shaders:  ^2Uses customizable lightingDiffuseEntity shader\n\"" );
+		} else {
+			trap->SendServerCommand( ent - g_entities, "print \"^7Tintable: ^1No ^7(base model uses static diffuse shaders)\n\"" );
+			if ( !Q_stricmp( queryType, "jedi" ) || !Q_stricmp( queryType, "jedi2" ) ) {
+				trap->SendServerCommand( ent - g_entities, "print \"^7Tip:      ^2Plain 'jedi' uses the static Kyle-style model. Use 'jedi_hm1', 'jedi_hf1', 'jedi_kdm1', 'jedi_tf1', or 'jedi_zf1' for tintable Jedi robes!\n\"" );
+			} else {
+				trap->SendServerCommand( ent - g_entities, "print \"^7Note:     ^3Requires a custom skin/shader file to display custom tints.\n\"" );
+			}
+		}
+		return;
+	}
+
+	targetEnt = G_GetTargetNPC( ent );
+	if ( !targetEnt ) {
+		trap->SendServerCommand( ent - g_entities, "print \"Usage: /npcinfo [npc_type] (or aim at an NPC to inspect it)\n\"" );
+		return;
+	}
+
+	npcType = targetEnt->NPC_type ? targetEnt->NPC_type : "unknown";
+	npcName = ( targetEnt->targetname && targetEnt->targetname[0] ) ? targetEnt->targetname : npcType;
+	tintable = G_IsNPCTintable( npcType, targetEnt );
+
+	if ( targetEnt->client ) {
+		r = targetEnt->client->ps.customRGBA[0];
+		g = targetEnt->client->ps.customRGBA[1];
+		b = targetEnt->client->ps.customRGBA[2];
+		a = targetEnt->client->ps.customRGBA[3];
+	} else {
+		r = targetEnt->s.customRGBA[0];
+		g = targetEnt->s.customRGBA[1];
+		b = targetEnt->s.customRGBA[2];
+		a = targetEnt->s.customRGBA[3];
+	}
+
+	int curScale = 100;
+	if ( targetEnt->client && targetEnt->client->ps.iModelScale > 0 ) {
+		curScale = targetEnt->client->ps.iModelScale;
+	} else if ( targetEnt->s.iModelScale > 0 ) {
+		curScale = targetEnt->s.iModelScale;
+	}
+
+	trap->SendServerCommand( ent - g_entities, va( "print \"^5=== NPC Information ===\n"
+		"^7Name:          ^3%s\n"
+		"^7Type:          ^2%s\n"
+		"^7Level:         ^2%d\n"
+		"^7Scale:         ^2%d%% ^7(%.2fx)\n"
+		"^7Health:        ^2%d ^7/ ^2%d\n"
+		"^7Current Color: ^2R:%d G:%d B:%d A:%d\n"
+		"^7Tintable:      %s\n\"",
+		npcName,
+		npcType,
+		targetEnt->npcLevel > 0 ? targetEnt->npcLevel : 1,
+		curScale,
+		curScale / 100.0f,
+		targetEnt->health,
+		targetEnt->maxHealth,
+		r, g, b, a,
+		tintable ? "^2Yes ^7(unmodded client compatible)" : "^1No ^7(base model uses static diffuse shaders)"
+	) );
+
+	if ( targetEnt->npcRespawner && targetEnt->npcRespawner->inuse ) {
+		int sec = (int)( targetEnt->npcRespawner->wait / 1000.0f );
+		trap->SendServerCommand( ent - g_entities, va( "print \"^7Respawner:     ^2Active ^7(respawns every %ds)\n\"", sec ) );
+	} else {
+		trap->SendServerCommand( ent - g_entities, "print \"^7Respawner:     ^7None (one-time spawn)\n\"" );
+	}
+}
+
+void Cmd_NPCColor_f( gentity_t *ent ) {
+	gentity_t	*targetEnt = NULL;
+	char		rArg[64], gArg[64], bArg[64], aArg[64];
+	int			r = 0, g = 0, b = 0, a = 255;
+	qboolean	isDefault = qfalse;
+	qboolean	tintable = qfalse;
+
+	if ( !ent || !ent->client ) {
+		return;
+	}
+
+	if ( trap->Argc() < 4 ) {
+		trap->SendServerCommand( ent - g_entities, "print \"Usage: /npccolor <r> <g> <b> [a] (aim at an NPC; use <= 0 for default)\n\"" );
+		return;
+	}
+
+	targetEnt = G_GetTargetNPC( ent );
+	if ( !targetEnt ) {
+		trap->SendServerCommand( ent - g_entities, "print \"You must be aiming at an NPC to change its color.\n\"" );
+		return;
+	}
+
+	trap->Argv( 1, rArg, sizeof( rArg ) );
+	trap->Argv( 2, gArg, sizeof( gArg ) );
+	trap->Argv( 3, bArg, sizeof( bArg ) );
+	r = atoi( rArg );
+	g = atoi( gArg );
+	b = atoi( bArg );
+
+	if ( trap->Argc() >= 5 ) {
+		trap->Argv( 4, aArg, sizeof( aArg ) );
+		a = atoi( aArg );
+	}
+
+	if ( r <= 0 && g <= 0 && b <= 0 && ( trap->Argc() < 5 || a <= 0 ) ) {
+		isDefault = qtrue;
+	}
+
+	if ( isDefault ) {
+		r = g = b = a = 255;
+		if ( targetEnt->client ) {
+			targetEnt->client->ps.customRGBA[0] = 255;
+			targetEnt->client->ps.customRGBA[1] = 255;
+			targetEnt->client->ps.customRGBA[2] = 255;
+			targetEnt->client->ps.customRGBA[3] = 255;
+		}
+		targetEnt->s.customRGBA[0] = targetEnt->s.customRGBA[1] = targetEnt->s.customRGBA[2] = targetEnt->s.customRGBA[3] = 255;
+
+		if ( targetEnt->npcRespawner && targetEnt->npcRespawner->inuse ) {
+			targetEnt->npcRespawner->s.customRGBA[0] = 0;
+			targetEnt->npcRespawner->s.customRGBA[1] = 0;
+			targetEnt->npcRespawner->s.customRGBA[2] = 0;
+			targetEnt->npcRespawner->s.customRGBA[3] = 0;
+		}
+
+		trap->SendServerCommand( ent - g_entities, va( "print \"Reset color of '%s' to default.\n\"",
+			targetEnt->targetname ? targetEnt->targetname : targetEnt->NPC_type ) );
+		return;
+	}
+
+	r = Com_Clampi( 0, 255, r );
+	g = Com_Clampi( 0, 255, g );
+	b = Com_Clampi( 0, 255, b );
+	a = ( a > 0 ) ? Com_Clampi( 0, 255, a ) : 255;
+
+	if ( targetEnt->client ) {
+		targetEnt->client->ps.customRGBA[0] = r;
+		targetEnt->client->ps.customRGBA[1] = g;
+		targetEnt->client->ps.customRGBA[2] = b;
+		targetEnt->client->ps.customRGBA[3] = a;
+	}
+	targetEnt->s.customRGBA[0] = r;
+	targetEnt->s.customRGBA[1] = g;
+	targetEnt->s.customRGBA[2] = b;
+	targetEnt->s.customRGBA[3] = a;
+
+	if ( targetEnt->npcRespawner && targetEnt->npcRespawner->inuse ) {
+		targetEnt->npcRespawner->s.customRGBA[0] = r;
+		targetEnt->npcRespawner->s.customRGBA[1] = g;
+		targetEnt->npcRespawner->s.customRGBA[2] = b;
+		targetEnt->npcRespawner->s.customRGBA[3] = a;
+	}
+
+	tintable = G_IsNPCTintable( targetEnt->NPC_type, targetEnt );
+	if ( tintable ) {
+		trap->SendServerCommand( ent - g_entities, va( "print \"^2Set color of '%s' to R:%d G:%d B:%d A:%d.^7\n\"",
+			targetEnt->targetname ? targetEnt->targetname : targetEnt->NPC_type, r, g, b, a ) );
+	} else {
+		trap->SendServerCommand( ent - g_entities, va( "print \"^3Set color of '%s' to R:%d G:%d B:%d A:%d. ^1Note: This NPC model does not use customizable shaders in base assets, so color change may not be visible without a custom skin.^7\n\"",
+			targetEnt->targetname ? targetEnt->targetname : targetEnt->NPC_type, r, g, b, a ) );
+	}
+}
+
+void Cmd_NPCScale_f( gentity_t *ent ) {
+	gentity_t	*targetEnt = NULL;
+	char		scaleArg[64];
+	int			scalePercent = 100;
+	qboolean	parsed = qfalse;
+
+	if ( !ent || !ent->client ) {
+		return;
+	}
+
+	if ( trap->Argc() < 2 ) {
+		trap->SendServerCommand( ent - g_entities, "print \"Usage: /npcscale <percentage|multiplier> (e.g. 150%, 1.5x, 200, 50, reset)\n\"" );
+		return;
+	}
+
+	trap->Argv( 1, scaleArg, sizeof( scaleArg ) );
+	parsed = G_ParseScaleString( scaleArg, &scalePercent );
+	if ( !parsed ) {
+		if ( Q_isanumber( scaleArg ) ) {
+			int val = atoi( scaleArg );
+			if ( val <= 0 ) {
+				scalePercent = 100;
+			} else if ( val <= 10 ) {
+				scalePercent = val * 100;
+			} else {
+				scalePercent = val;
+			}
+			scalePercent = Com_Clampi( 10, 1023, scalePercent );
+			parsed = qtrue;
+		}
+	}
+
+	if ( !parsed ) {
+		trap->SendServerCommand( ent - g_entities, va( "print \"^1Invalid scale '%s'. Use percentage (e.g. 150%%, 50%%), multiplier (e.g. 1.5x, 2.0x), or 'reset'.^7\n\"", scaleArg ) );
+		return;
+	}
+
+	targetEnt = G_GetTargetNPC( ent );
+	if ( !targetEnt ) {
+		trap->SendServerCommand( ent - g_entities, "print \"You must be aiming at an NPC to change its scale.\n\"" );
+		return;
+	}
+
+	G_ApplyNPCScale( targetEnt, scalePercent );
+
+	if ( targetEnt->npcRespawner && targetEnt->npcRespawner->inuse ) {
+		targetEnt->npcRespawner->s.iModelScale = scalePercent;
+		VectorSet( targetEnt->npcRespawner->modelScale, scalePercent / 100.0f, scalePercent / 100.0f, scalePercent / 100.0f );
+	}
+
+	trap->SendServerCommand( ent - g_entities, va( "print \"^2Set scale of '^3%s^2' to ^3%d%% ^7(%.2fx).^7\n\"",
+		( targetEnt->targetname && targetEnt->targetname[0] ) ? targetEnt->targetname : ( targetEnt->NPC_type ? targetEnt->NPC_type : "NPC" ),
+		scalePercent, scalePercent / 100.0f ) );
 }
 
 void Cmd_ClearRespawns_f( gentity_t *ent ) {
@@ -3863,6 +4142,188 @@ void Cmd_ListEffects_f( gentity_t *ent ) {
 
 void Cmd_ListModels_f( gentity_t *ent ) {
 	G_ListFiles_f( ent, "listmodels", "models/map_objects", ".md3", "models/map_objects/", qfalse );
+}
+
+#define LISTNPCS_PER_PAGE 25
+#define MAX_LISTED_NPCS 512
+
+typedef struct {
+	char		name[64];
+	qboolean	tintable;
+} npcListEntry_t;
+
+static npcListEntry_t	s_npcList[MAX_LISTED_NPCS];
+static int				s_numNPCs = 0;
+
+static int QDECL compareNPCListEntry( const void *a, const void *b ) {
+	const npcListEntry_t *entryA = (const npcListEntry_t *)a;
+	const npcListEntry_t *entryB = (const npcListEntry_t *)b;
+	return Q_stricmp( entryA->name, entryB->name );
+}
+
+static void G_BuildNPCList( void ) {
+	const char	*p = NPCParms;
+	char		*token;
+	int			i;
+	qboolean	exists;
+
+	s_numNPCs = 0;
+	if ( !p || !p[0] ) {
+		return;
+	}
+
+	COM_BeginParseSession( "G_BuildNPCList" );
+	while ( p && *p && s_numNPCs < MAX_LISTED_NPCS ) {
+		token = COM_ParseExt( (char **)&p, qtrue );
+		if ( !token[0] ) {
+			break;
+		}
+
+		exists = qfalse;
+		for ( i = 0; i < s_numNPCs; i++ ) {
+			if ( !Q_stricmp( s_npcList[i].name, token ) ) {
+				exists = qtrue;
+				break;
+			}
+		}
+
+		if ( !exists ) {
+			Q_strncpyz( s_npcList[s_numNPCs].name, token, sizeof( s_npcList[s_numNPCs].name ) );
+			s_numNPCs++;
+		}
+
+		SkipBracedSection( &p, 0 );
+	}
+
+	for ( i = 0; i < s_numNPCs; i++ ) {
+		s_npcList[i].tintable = G_IsNPCTintable( s_npcList[i].name, NULL );
+	}
+
+	qsort( s_npcList, s_numNPCs, sizeof( s_npcList[0] ), compareNPCListEntry );
+}
+
+void Cmd_ListNPCs_f( gentity_t *ent ) {
+	char		filter[MAX_STRING_CHARS] = { 0 };
+	char		arg[MAX_STRING_CHARS] = { 0 };
+	char		outBuf[960] = { 0 };
+	int			page = 1, totalMatches = 0, totalPages = 1;
+	int			matchIndex = 0, startIndex, endIndex, i;
+	qboolean	filterRGB = qfalse;
+
+	if ( trap->Argc() >= 3 ) {
+		trap->Argv( 1, filter, sizeof( filter ) );
+		trap->Argv( 2, arg, sizeof( arg ) );
+		page = atoi( arg );
+	} else if ( trap->Argc() == 2 ) {
+		trap->Argv( 1, arg, sizeof( arg ) );
+		if ( Q_isanumber( arg ) && atoi( arg ) > 0 ) {
+			page = atoi( arg );
+		} else {
+			Q_strncpyz( filter, arg, sizeof( filter ) );
+		}
+	}
+
+	if ( !Q_stricmp( filter, "rgb" ) || !Q_stricmp( filter, "tintable" ) || !Q_stricmp( filter, "color" ) ) {
+		filterRGB = qtrue;
+	}
+
+	if ( s_numNPCs == 0 ) {
+		G_BuildNPCList();
+	}
+
+	if ( s_numNPCs == 0 ) {
+		if ( ent ) {
+			trap->SendServerCommand( ent - g_entities, "print \"No NPCs found in database.\n\"" );
+		} else {
+			trap->Print( "No NPCs found in database.\n" );
+		}
+		return;
+	}
+
+	for ( i = 0; i < s_numNPCs; i++ ) {
+		if ( filterRGB ) {
+			if ( !s_npcList[i].tintable ) {
+				continue;
+			}
+		} else if ( filter[0] && !Q_stristr( s_npcList[i].name, filter ) ) {
+			continue;
+		}
+		totalMatches++;
+	}
+
+	if ( totalMatches == 0 ) {
+		if ( ent ) {
+			trap->SendServerCommand( ent - g_entities, va( "print \"No matching NPCs found for '%s'.\n\"", filter ) );
+		} else {
+			trap->Print( "No matching NPCs found for '%s'.\n", filter );
+		}
+		return;
+	}
+
+	totalPages = ( totalMatches + LISTNPCS_PER_PAGE - 1 ) / LISTNPCS_PER_PAGE;
+	page = Com_Clampi( 1, totalPages, page );
+	startIndex = ( page - 1 ) * LISTNPCS_PER_PAGE;
+	endIndex = startIndex + LISTNPCS_PER_PAGE;
+	if ( endIndex > totalMatches ) {
+		endIndex = totalMatches;
+	}
+
+	if ( filterRGB ) {
+		Q_strncpyz( outBuf, "^5=== RGB Tintable NPCs (Compatible with custom R G B A) ===\n", sizeof( outBuf ) );
+	} else {
+		Q_strncpyz( outBuf, "^5=== Available NPCs (^2[RGB Tintable]^5 vs ^1[Default Color Only]^5) ===\n", sizeof( outBuf ) );
+	}
+
+	for ( i = 0; i < s_numNPCs; i++ ) {
+		char line[160];
+
+		if ( filterRGB ) {
+			if ( !s_npcList[i].tintable ) {
+				continue;
+			}
+		} else if ( filter[0] && !Q_stristr( s_npcList[i].name, filter ) ) {
+			continue;
+		}
+
+		if ( matchIndex >= startIndex && matchIndex < endIndex ) {
+			if ( s_npcList[i].tintable ) {
+				Com_sprintf( line, sizeof( line ), "  ^2%-22s ^7[^2RGB Tintable^7]\n", s_npcList[i].name );
+			} else if ( !Q_stricmp( s_npcList[i].name, "jedi" ) || !Q_stricmp( s_npcList[i].name, "jedi2" ) ) {
+				Com_sprintf( line, sizeof( line ), "  ^7%-22s ^7[^1Static - Use jedi_hf1 / jedi_hm1 for RGB^7]\n", s_npcList[i].name );
+			} else {
+				Com_sprintf( line, sizeof( line ), "  ^7%-22s ^7[^1Default Color Only^7]\n", s_npcList[i].name );
+			}
+
+			if ( strlen( outBuf ) + strlen( line ) >= sizeof( outBuf ) - 1 ) {
+				if ( ent ) {
+					trap->SendServerCommand( ent - g_entities, va( "print \"%s\"", outBuf ) );
+				} else {
+					trap->Print( "%s", outBuf );
+				}
+				outBuf[0] = '\0';
+			}
+			Q_strcat( outBuf, sizeof( outBuf ), line );
+		}
+		matchIndex++;
+	}
+
+	if ( outBuf[0] ) {
+		if ( ent ) {
+			trap->SendServerCommand( ent - g_entities, va( "print \"%s\"", outBuf ) );
+		} else {
+			trap->Print( "%s", outBuf );
+		}
+	}
+
+	if ( ent ) {
+		trap->SendServerCommand( ent - g_entities, va( "print \"^3--- Showing %d-%d of %d (Page %d/%d) | Usage: /listnpcs [filter|rgb] [page] ---^7\n\"",
+			startIndex + 1, endIndex, totalMatches, page, totalPages ) );
+		trap->SendServerCommand( ent - g_entities, "print \"^7Note: For Jedi, customizable variants (e.g. ^2jedi_hf1^7, ^2jedi_hm1^7) support RGB robes; plain ^1jedi^7 is static.\n\"" );
+	} else {
+		trap->Print( "--- Showing %d-%d of %d (Page %d/%d) | Usage: listnpcs [filter|rgb] [page] ---\n",
+			startIndex + 1, endIndex, totalMatches, page, totalPages );
+		trap->Print( "Note: For Jedi, customizable variants (e.g. jedi_hf1, jedi_hm1) support RGB robes; plain jedi is static.\n" );
+	}
 }
 
 /*
@@ -4158,11 +4619,15 @@ command_t commands[] = {
 	{ "levelshot",			Cmd_LevelShot_f,			CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "listeffects",		Cmd_ListEffects_f,			CMD_NOINTERMISSION },
 	{ "listmodels",			Cmd_ListModels_f,			CMD_NOINTERMISSION },
+	{ "listnpcs",			Cmd_ListNPCs_f,				CMD_NOINTERMISSION },
 	{ "maplist",			Cmd_MapList_f,				CMD_NOINTERMISSION },
 	{ "noclip",				Cmd_Noclip_f,				CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "notarget",			Cmd_Notarget_f,				CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "npc",				Cmd_NPC_f,					CMD_ALIVE },
+	{ "npccolor",			Cmd_NPCColor_f,				CMD_ALIVE|CMD_NOINTERMISSION },
+	{ "npcinfo",			Cmd_NPCInfo_f,				CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "npcname",			Cmd_NPCName_f,				CMD_ALIVE|CMD_NOINTERMISSION },
+	{ "npcscale",			Cmd_NPCScale_f,				CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "rpg",				Cmd_RPGStats_f,				CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "say",				Cmd_Say_f,					0 },
 	{ "say_team",			Cmd_SayTeam_f,				0 },

@@ -526,21 +526,23 @@ void Svcmd_AddModel_f( void ) {
 }
 
 void Svcmd_AddRespawn_f( void ) {
-	char	npc_type[MAX_STRING_CHARS];
-	char	time_arg[MAX_STRING_CHARS];
-	char	origin_x[MAX_STRING_CHARS];
-	char	origin_y[MAX_STRING_CHARS];
-	char	origin_z[MAX_STRING_CHARS];
-	char	yaw_arg[MAX_STRING_CHARS];
-	char	arg7[MAX_STRING_CHARS] = { 0 };
-	char	custom_name[MAX_STRING_CHARS] = { 0 };
-	vec3_t	origin;
-	float	yaw;
-	int		respawnSeconds;
-	int		npcLevel = 1;
+	char		npc_type[MAX_STRING_CHARS];
+	char		time_arg[MAX_STRING_CHARS];
+	char		origin_x[MAX_STRING_CHARS];
+	char		origin_y[MAX_STRING_CHARS];
+	char		origin_z[MAX_STRING_CHARS];
+	char		yaw_arg[MAX_STRING_CHARS];
+	char		custom_name[MAX_STRING_CHARS] = { 0 };
+	vec3_t		origin;
+	float		yaw;
+	int			respawnSeconds;
+	int			npcLevel = 1;
+	int			customRGBA[4] = { 0 };
+	int			modelScale = 100;
+	qboolean	hasCustomColor = qfalse;
 
 	if ( trap->Argc() < 7 ) {
-		trap->Print( "Usage: addrespawn <npc_type> <seconds> <x> <y> <z> <yaw> [level] [name]\n" );
+		trap->Print( "Usage: addrespawn <npc_type> <seconds> <x> <y> <z> <yaw> [level] [name] [scale] [r g b [a]]\n" );
 		return;
 	}
 
@@ -550,34 +552,43 @@ void Svcmd_AddRespawn_f( void ) {
 	trap->Argv( 4, origin_y, sizeof( origin_y ) );
 	trap->Argv( 5, origin_z, sizeof( origin_z ) );
 	trap->Argv( 6, yaw_arg, sizeof( yaw_arg ) );
-	if ( trap->Argc() >= 8 ) {
-		trap->Argv( 7, arg7, sizeof( arg7 ) );
-		if ( Q_isanumber( arg7 ) && atoi( arg7 ) > 0 ) {
-			npcLevel = atoi( arg7 );
-			if ( trap->Argc() >= 9 ) {
-				trap->Argv( 8, custom_name, sizeof( custom_name ) );
-			}
-		} else {
-			Q_strncpyz( custom_name, arg7, sizeof( custom_name ) );
-		}
-	}
+
+	hasCustomColor = G_ParseLevelNameRGBA( 7, &npcLevel, custom_name, sizeof( custom_name ), customRGBA, &modelScale );
 
 	respawnSeconds = atoi( time_arg );
 	if ( respawnSeconds < 1 ) {
 		respawnSeconds = 1;
 	}
 
-	origin[0] = (float)atoi( origin_x );
-	origin[1] = (float)atoi( origin_y );
-	origin[2] = (float)atoi( origin_z );
-	yaw = (float)atoi( yaw_arg );
+	origin[0] = (float)atof( origin_x );
+	origin[1] = (float)atof( origin_y );
+	origin[2] = (float)atof( origin_z );
+	yaw = (float)atof( yaw_arg );
 
-	G_CreateNPCRespawner( npc_type, respawnSeconds, origin, yaw, NULL, custom_name[0] ? custom_name : NULL, npcLevel );
-	if ( custom_name[0] ) {
-		trap->Print( "Added NPC respawn: %s \"%s\" (Lv.%d, %ds) at <%s %s %s %s>\n", npc_type, custom_name, npcLevel, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+	G_CreateNPCRespawner( npc_type, respawnSeconds, origin, yaw, NULL, custom_name[0] ? custom_name : NULL, npcLevel, hasCustomColor ? customRGBA : NULL, modelScale );
+	if ( hasCustomColor ) {
+		if ( custom_name[0] ) {
+			trap->Print( "Added NPC respawn: %s \"%s\" (Lv.%d, Scale:%d%%, %ds, RGBA:%d,%d,%d,%d) at <%s %s %s %s>\n", npc_type, custom_name, npcLevel, modelScale, respawnSeconds, customRGBA[0], customRGBA[1], customRGBA[2], customRGBA[3], origin_x, origin_y, origin_z, yaw_arg );
+		} else {
+			trap->Print( "Added NPC respawn: %s (Lv.%d, Scale:%d%%, %ds, RGBA:%d,%d,%d,%d) at <%s %s %s %s>\n", npc_type, npcLevel, modelScale, respawnSeconds, customRGBA[0], customRGBA[1], customRGBA[2], customRGBA[3], origin_x, origin_y, origin_z, yaw_arg );
+		}
+	} else if ( custom_name[0] ) {
+		if ( modelScale > 0 && modelScale != 100 ) {
+			trap->Print( "Added NPC respawn: %s \"%s\" (Lv.%d, Scale:%d%%, %ds) at <%s %s %s %s>\n", npc_type, custom_name, npcLevel, modelScale, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+		} else {
+			trap->Print( "Added NPC respawn: %s \"%s\" (Lv.%d, %ds) at <%s %s %s %s>\n", npc_type, custom_name, npcLevel, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+		}
 	} else {
-		trap->Print( "Added NPC respawn: %s (Lv.%d, %ds) at <%s %s %s %s>\n", npc_type, npcLevel, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+		if ( modelScale > 0 && modelScale != 100 ) {
+			trap->Print( "Added NPC respawn: %s (Lv.%d, Scale:%d%%, %ds) at <%s %s %s %s>\n", npc_type, npcLevel, modelScale, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+		} else {
+			trap->Print( "Added NPC respawn: %s (Lv.%d, %ds) at <%s %s %s %s>\n", npc_type, npcLevel, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+		}
 	}
+}
+
+void Svcmd_ListNPCs_f( void ) {
+	Cmd_ListNPCs_f( NULL );
 }
 
 void Svcmd_RPG_f( void ) {
@@ -627,6 +638,7 @@ svcmd_t svcmds[] = {
 	{ "forceteam",					Svcmd_ForceTeam_f,					qfalse },
 	{ "game_memory",				Svcmd_GameMem_f,					qfalse },
 	{ "listip",						Svcmd_ListIP_f,						qfalse },
+	{ "listnpcs",					Svcmd_ListNPCs_f,					qfalse },
 	{ "removeip",					Svcmd_RemoveIP_f,					qfalse },
 	{ "rpg",						Svcmd_RPG_f,						qfalse },
 	{ "say",						Svcmd_Say_f,						qtrue },

@@ -1777,6 +1777,7 @@ qboolean NPC_ParseParms( const char *NPCName, gentity_t *NPC )
 				if (n != 100)
 				{
 					NPC->client->ps.iModelScale = n; //so the client knows
+					NPC->s.iModelScale = n;
 					if (n >= 1024)
 					{
 						Com_Printf("WARNING: MP does not support scaling up to or over 1024%\n");
@@ -3610,4 +3611,121 @@ void NPC_LoadParms( void )
 			//rww  12/19/02-actually the probelm was npcParseBuffer not being nul-term'd, which could cause issues in the strcat too
 		}
 	}
+}
+
+
+/*
+==================
+G_IsNPCTintable
+
+Returns qtrue if the NPC type/model supports native RGBA tinting on unmodded clients.
+In base JKA assets, only models with shaders specifying "rgbGen lightingDiffuseEntity"
+support dynamic RGBA tinting:
+- jedi_hm, jedi_hf, jedi_kdm, jedi_rm, jedi_tf, jedi_zf
+- rodian, weequay, trandoshan, gran
+All other base models (including plain 'jedi', 'cultist', 'reborn', 'human_merc', 'stormtrooper', 'jawa')
+use static textures and do not react to customRGBA.
+==================
+*/
+qboolean G_IsNPCTintable( const char *npcType, gentity_t *ent )
+{
+	const char	*p = NPCParms;
+	char		*token;
+	char		*value;
+	char		playerModel[MAX_QPATH];
+	qboolean	hasCustomRGBA = qfalse;
+	static const char *tintableModels[] = {
+		"jedi_hm", "jedi_hf", "jedi_kdm", "jedi_rm", "jedi_tf", "jedi_zf",
+		"rodian", "weequay", "trandoshan", "gran", NULL
+	};
+	int i;
+
+	playerModel[0] = '\0';
+
+	if ( !npcType && ent )
+	{
+		npcType = ent->NPC_type;
+	}
+	if ( !npcType || !npcType[0] )
+	{
+		return qfalse;
+	}
+
+	// Inspect NPCParms (*.npc files) for this NPC definition
+	if ( p && p[0] )
+	{
+		COM_BeginParseSession( "G_IsNPCTintable" );
+		while ( p )
+		{
+			token = COM_ParseExt( (char **)&p, qtrue );
+			if ( !token[0] )
+			{
+				break;
+			}
+			if ( !Q_stricmp( token, npcType ) )
+			{
+				if ( !BG_ParseLiteral( (char **)&p, "{" ) )
+				{
+					while ( 1 )
+					{
+						token = COM_ParseExt( (char **)&p, qtrue );
+						if ( !token[0] || !Q_stricmp( token, "}" ) )
+						{
+							break;
+						}
+						if ( !Q_stricmp( token, "customRGBA" ) )
+						{
+							hasCustomRGBA = qtrue;
+						}
+						else if ( !Q_stricmp( token, "playerModel" ) )
+						{
+							if ( !COM_ParseString( (char **)&p, &value ) )
+							{
+								Q_strncpyz( playerModel, value, sizeof( playerModel ) );
+							}
+						}
+					}
+				}
+				break;
+			}
+			SkipBracedSection( &p, 0 );
+		}
+	}
+
+	if ( hasCustomRGBA )
+	{
+		return qtrue;
+	}
+
+	if ( playerModel[0] )
+	{
+		for ( i = 0; tintableModels[i]; i++ )
+		{
+			if ( Q_stristr( playerModel, tintableModels[i] ) )
+			{
+				return qtrue;
+			}
+		}
+	}
+
+	if ( ent && ent->client && ent->client->modelname[0] )
+	{
+		for ( i = 0; tintableModels[i]; i++ )
+		{
+			if ( Q_stristr( ent->client->modelname, tintableModels[i] ) )
+			{
+				return qtrue;
+			}
+		}
+	}
+
+	for ( i = 0; tintableModels[i]; i++ )
+	{
+		if ( Q_stristr( npcType, tintableModels[i] ) )
+		{
+			return qtrue;
+		}
+	}
+
+	return qfalse;
 }

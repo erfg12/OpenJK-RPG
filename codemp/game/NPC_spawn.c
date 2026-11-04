@@ -1165,7 +1165,15 @@ void NPC_Begin (gentity_t *ent)
 		client->ps.stats[STAT_MAX_HEALTH] = ent->health;
 		client->ps.stats[STAT_HEALTH] = ent->health;
 	}
+	if ( ent->baseMins[0] == 0 && ent->baseMins[1] == 0 && ent->baseMins[2] == 0 &&
+	     ent->baseMaxs[0] == 0 && ent->baseMaxs[1] == 0 && ent->baseMaxs[2] == 0 )
 	{
+		VectorCopy( ent->r.mins, ent->baseMins );
+		VectorCopy( ent->r.maxs, ent->baseMaxs );
+	}
+	if ( ent->s.iModelScale > 0 && ent->s.iModelScale != 100 )
+	{
+		G_ApplyNPCScale( ent, ent->s.iModelScale );
 	}
 
 	if (ent->s.shouldtarget)
@@ -4179,6 +4187,369 @@ gentity_t *NPC_SpawnType( gentity_t *ent, char *npc_type, char *targetname, qboo
 	}
 }
 
+/*
+==================
+G_ParseScaleString
+
+Parses a scale token (e.g. "150%", "1.5x", "scale=150", "s=1.5", "1.5", "default", "reset").
+Returns qtrue if token was a valid scale specifier, setting outScale to percentage (10-1023).
+==================
+*/
+qboolean G_ParseScaleString( const char *str, int *outScale )
+{
+	int			len;
+	char		buf[64];
+	const char	*valStr = str;
+
+	if ( !str || !str[0] )
+	{
+		return qfalse;
+	}
+
+	if ( !Q_stricmp( str, "default" ) || !Q_stricmp( str, "reset" ) )
+	{
+		if ( outScale )
+		{
+			*outScale = 100;
+		}
+		return qtrue;
+	}
+
+	if ( !Q_stricmpn( str, "scale=", 6 ) )
+	{
+		valStr = str + 6;
+	}
+	else if ( !Q_stricmpn( str, "s=", 2 ) )
+	{
+		valStr = str + 2;
+	}
+
+	if ( !valStr[0] )
+	{
+		return qfalse;
+	}
+
+	Q_strncpyz( buf, valStr, sizeof( buf ) );
+	len = strlen( buf );
+
+	// Check if ending with '%' e.g. "150%"
+	if ( len > 1 && buf[len - 1] == '%' )
+	{
+		buf[len - 1] = '\0';
+		if ( outScale )
+		{
+			int pct = atoi( buf );
+			*outScale = Com_Clampi( 10, 1023, pct > 0 ? pct : 100 );
+		}
+		return qtrue;
+	}
+
+	// Check if ending with 'x' or 'X' e.g. "1.5x"
+	if ( len > 1 && ( buf[len - 1] == 'x' || buf[len - 1] == 'X' ) )
+	{
+		buf[len - 1] = '\0';
+		if ( outScale )
+		{
+			float mul = (float)atof( buf );
+			int pct = (int)( mul * 100.0f + 0.5f );
+			*outScale = Com_Clampi( 10, 1023, pct > 0 ? pct : 100 );
+		}
+		return qtrue;
+	}
+
+	// If explicit "scale=" or "s=" prefix was present:
+	if ( valStr != str )
+	{
+		if ( outScale )
+		{
+			float num = (float)atof( buf );
+			int pct;
+			if ( strchr( buf, '.' ) != NULL || ( num > 0.0f && num <= 10.0f ) )
+			{
+				pct = (int)( num * 100.0f + 0.5f );
+			}
+			else
+			{
+				pct = atoi( buf );
+			}
+			*outScale = Com_Clampi( 10, 1023, pct > 0 ? pct : 100 );
+		}
+		return qtrue;
+	}
+
+	// If it contains a decimal point e.g. "1.5"
+	if ( strchr( buf, '.' ) != NULL )
+	{
+		float mul = (float)atof( buf );
+		if ( mul > 0.0f )
+		{
+			if ( outScale )
+			{
+				int pct = (int)( mul * 100.0f + 0.5f );
+				*outScale = Com_Clampi( 10, 1023, pct > 0 ? pct : 100 );
+			}
+			return qtrue;
+		}
+	}
+
+	return qfalse;
+}
+
+/*
+==================
+G_ApplyNPCScale
+
+Sets the visual scale and collision bounding box for an NPC.
+scalePercent: 100 = default 1.0x, 150 = 1.5x, 50 = 0.5x, etc. (range 10 to 1023).
+==================
+*/
+void G_ApplyNPCScale( gentity_t *ent, int scalePercent )
+{
+	float fScale;
+
+	if ( !ent )
+	{
+		return;
+	}
+
+	if ( scalePercent <= 0 )
+	{
+		scalePercent = 100;
+	}
+	scalePercent = Com_Clampi( 10, 1023, scalePercent );
+	fScale = scalePercent / 100.0f;
+
+	ent->s.iModelScale = scalePercent;
+	if ( ent->client )
+	{
+		ent->client->ps.iModelScale = scalePercent;
+	}
+	VectorSet( ent->modelScale, fScale, fScale, fScale );
+
+	// Initialize base bounds if not already recorded
+	if ( ent->baseMins[0] == 0 && ent->baseMins[1] == 0 && ent->baseMins[2] == 0 &&
+	     ent->baseMaxs[0] == 0 && ent->baseMaxs[1] == 0 && ent->baseMaxs[2] == 0 )
+	{
+		VectorCopy( ent->r.mins, ent->baseMins );
+		VectorCopy( ent->r.maxs, ent->baseMaxs );
+	}
+
+	if ( ent->baseMins[0] != 0 || ent->baseMins[1] != 0 || ent->baseMins[2] != 0 ||
+	     ent->baseMaxs[0] != 0 || ent->baseMaxs[1] != 0 || ent->baseMaxs[2] != 0 )
+	{
+		float height = ent->baseMaxs[2] - ent->baseMins[2];
+
+		ent->r.mins[0] = ent->baseMins[0] * fScale;
+		ent->r.mins[1] = ent->baseMins[1] * fScale;
+		ent->r.mins[2] = ent->baseMins[2];
+
+		ent->r.maxs[0] = ent->baseMaxs[0] * fScale;
+		ent->r.maxs[1] = ent->baseMaxs[1] * fScale;
+		ent->r.maxs[2] = ent->baseMins[2] + height * fScale;
+
+		if ( ent->client )
+		{
+			ent->client->ps.standheight = ent->r.maxs[2];
+			ent->client->ps.crouchheight = ent->baseMins[2] + ( CROUCH_MAXS_2 - ent->baseMins[2] ) * fScale;
+		}
+
+		trap->LinkEntity( (sharedEntity_t *)ent );
+	}
+}
+
+/*
+==================
+G_ParseLevelNameRGBA
+
+Parses optional [level] [name] [scale] [r g b [a]] from command line arguments starting at startArg.
+If all RGBA <= 0 (or omitted), outRGBA is set to {0, 0, 0, 0} and returns qfalse for hasCustomRGBA.
+==================
+*/
+qboolean G_ParseLevelNameRGBA( int startArg, int *outLevel, char *outName, int nameSize, int outRGBA[4], int *outScale )
+{
+	int			argc;
+	int			endArg;
+	int			maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
+	qboolean	hasCustomColor = qfalse;
+	int			rgba[4] = { 0, 0, 0, 0 };
+	char		firstArg[MAX_STRING_CHARS];
+
+	if ( outLevel )
+	{
+		*outLevel = 1;
+	}
+	if ( outName && nameSize > 0 )
+	{
+		outName[0] = '\0';
+	}
+	if ( outRGBA )
+	{
+		outRGBA[0] = outRGBA[1] = outRGBA[2] = outRGBA[3] = 0;
+	}
+	if ( outScale )
+	{
+		*outScale = 100;
+	}
+
+	argc = trap->Argc();
+	if ( startArg >= argc )
+	{
+		return qfalse;
+	}
+
+	endArg = argc;
+
+	// Check if trailing arguments are 4 numbers: [r g b a]
+	if ( ( argc - startArg ) >= 4 )
+	{
+		char a0[64], a1[64], a2[64], a3[64];
+		trap->Argv( argc - 4, a0, sizeof( a0 ) );
+		trap->Argv( argc - 3, a1, sizeof( a1 ) );
+		trap->Argv( argc - 2, a2, sizeof( a2 ) );
+		trap->Argv( argc - 1, a3, sizeof( a3 ) );
+
+		if ( Q_isanumber( a0 ) && Q_isanumber( a1 ) && Q_isanumber( a2 ) && Q_isanumber( a3 ) )
+		{
+			int r = atoi( a0 );
+			int g = atoi( a1 );
+			int b = atoi( a2 );
+			int a = atoi( a3 );
+
+			if ( r <= 0 && g <= 0 && b <= 0 && a <= 0 )
+			{
+				hasCustomColor = qfalse;
+			}
+			else
+			{
+				rgba[0] = Com_Clampi( 0, 255, r );
+				rgba[1] = Com_Clampi( 0, 255, g );
+				rgba[2] = Com_Clampi( 0, 255, b );
+				rgba[3] = ( a > 0 ) ? Com_Clampi( 0, 255, a ) : 255;
+				hasCustomColor = qtrue;
+			}
+		endArg = argc - 4;
+		}
+	}
+
+	// If not 4 numbers, check if trailing arguments are 3 numbers: [r g b]
+	if ( !hasCustomColor && endArg == argc && ( argc - startArg ) >= 3 )
+	{
+		char a0[64], a1[64], a2[64];
+		trap->Argv( argc - 3, a0, sizeof( a0 ) );
+		trap->Argv( argc - 2, a1, sizeof( a1 ) );
+		trap->Argv( argc - 1, a2, sizeof( a2 ) );
+
+		if ( Q_isanumber( a0 ) && Q_isanumber( a1 ) && Q_isanumber( a2 ) )
+		{
+			int r = atoi( a0 );
+			int g = atoi( a1 );
+			int b = atoi( a2 );
+
+			if ( r <= 0 && g <= 0 && b <= 0 )
+			{
+				hasCustomColor = qfalse;
+			}
+			else
+			{
+				rgba[0] = Com_Clampi( 0, 255, r );
+				rgba[1] = Com_Clampi( 0, 255, g );
+				rgba[2] = Com_Clampi( 0, 255, b );
+				rgba[3] = 255;
+				hasCustomColor = qtrue;
+			}
+		endArg = argc - 3;
+		}
+	}
+
+	if ( outRGBA )
+	{
+		outRGBA[0] = rgba[0];
+		outRGBA[1] = rgba[1];
+		outRGBA[2] = rgba[2];
+		outRGBA[3] = rgba[3];
+	}
+
+	// Check if startArg is level or scale
+	if ( startArg < endArg )
+	{
+		int parsedScale = 100;
+		trap->Argv( startArg, firstArg, sizeof( firstArg ) );
+		if ( G_ParseScaleString( firstArg, &parsedScale ) )
+		{
+			if ( outScale )
+			{
+				*outScale = parsedScale;
+			}
+			startArg++;
+		}
+		else if ( Q_isanumber( firstArg ) && atoi( firstArg ) > 0 )
+		{
+			if ( outLevel )
+			{
+				*outLevel = Com_Clampi( 1, maxLevel, atoi( firstArg ) );
+			}
+			startArg++;
+
+			if ( startArg < endArg )
+			{
+				trap->Argv( startArg, firstArg, sizeof( firstArg ) );
+				if ( G_ParseScaleString( firstArg, &parsedScale ) )
+				{
+					if ( outScale )
+					{
+						*outScale = parsedScale;
+					}
+					startArg++;
+				}
+			}
+		}
+	}
+
+	// Check if trailing argument before RGBA is scale
+	if ( endArg > startArg )
+	{
+		int parsedScale = 100;
+		char endPiece[MAX_STRING_CHARS];
+		trap->Argv( endArg - 1, endPiece, sizeof( endPiece ) );
+		if ( G_ParseScaleString( endPiece, &parsedScale ) )
+		{
+			if ( outScale )
+			{
+				*outScale = parsedScale;
+			}
+		endArg--;
+		}
+	}
+
+	// Parse remaining arguments for [name] (skipping any embedded scale token)
+	if ( startArg < endArg && outName && nameSize > 0 )
+	{
+		int i;
+		char piece[MAX_STRING_CHARS];
+		outName[0] = '\0';
+		for ( i = startArg; i < endArg; i++ )
+		{
+			int parsedScale = 100;
+			trap->Argv( i, piece, sizeof( piece ) );
+			if ( G_ParseScaleString( piece, &parsedScale ) )
+			{
+				if ( outScale )
+				{
+					*outScale = parsedScale;
+				}
+				continue;
+			}
+			if ( outName[0] )
+			{
+				Q_strcat( outName, nameSize, " " );
+			}
+			Q_strcat( outName, nameSize, piece );
+		}
+	}
+
+	return hasCustomColor;
+}
+
 void NPC_Spawn_f( gentity_t *ent )
 {
 	char	npc_type[1024];
@@ -4198,33 +4569,42 @@ void NPC_Spawn_f( gentity_t *ent )
 	}
 
 	{
-		gentity_t *spawned;
-		int npcLevel = 1;
-		int argOffset = isVehicle ? 4 : 3;
-		char arg[1024];
+		gentity_t	*spawned;
+		int			npcLevel = 1;
+		int			argOffset = isVehicle ? 4 : 3;
+		int			customRGBA[4] = { 0 };
+		int			modelScale = 100;
+		qboolean	hasCustomColor = qfalse;
 
-		targetname[0] = '\0';
-		if ( trap->Argc() > argOffset )
-		{
-			trap->Argv( argOffset, arg, sizeof( arg ) );
-			if ( Q_isanumber( arg ) && atoi( arg ) > 0 )
-			{
-				npcLevel = Com_Clampi( 1, g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99, atoi( arg ) );
-				if ( trap->Argc() > argOffset + 1 )
-				{
-					Q_strncpyz( targetname, ConcatArgs( argOffset + 1 ), sizeof( targetname ) );
-				}
-			}
-			else
-			{
-				Q_strncpyz( targetname, ConcatArgs( argOffset ), sizeof( targetname ) );
-			}
-		}
+		hasCustomColor = G_ParseLevelNameRGBA( argOffset, &npcLevel, targetname, sizeof( targetname ), customRGBA, &modelScale );
 
 		spawned = NPC_SpawnType( ent, npc_type, targetname[0] ? targetname : NULL, isVehicle );
 		if ( spawned )
 		{
 			spawned->npcLevel = npcLevel;
+			if ( modelScale > 0 && modelScale != 100 )
+			{
+				G_ApplyNPCScale( spawned, modelScale );
+			}
+			if ( hasCustomColor )
+			{
+				if ( spawned->client )
+				{
+					spawned->client->ps.customRGBA[0] = customRGBA[0];
+					spawned->client->ps.customRGBA[1] = customRGBA[1];
+					spawned->client->ps.customRGBA[2] = customRGBA[2];
+					spawned->client->ps.customRGBA[3] = customRGBA[3];
+				}
+				spawned->s.customRGBA[0] = customRGBA[0];
+				spawned->s.customRGBA[1] = customRGBA[1];
+				spawned->s.customRGBA[2] = customRGBA[2];
+				spawned->s.customRGBA[3] = customRGBA[3];
+
+				if ( ent && ent->client && !G_IsNPCTintable( npc_type, spawned ) )
+				{
+					trap->SendServerCommand( ent - g_entities, "print \"^3Note: This NPC model does not use customizable shaders in base assets; custom color may not show without a custom skin.^7\n\"" );
+				}
+			}
 		}
 	}
 }
@@ -4432,6 +4812,24 @@ void G_NPCRespawner_Think( gentity_t *spawner )
 			newNPC->script_targetname = spawner->NPC_targetname;
 		}
 		newNPC->npcLevel = ( spawner->npcLevel > 0 ) ? spawner->npcLevel : 1;
+		if ( spawner->s.customRGBA[0] > 0 || spawner->s.customRGBA[1] > 0 || spawner->s.customRGBA[2] > 0 || spawner->s.customRGBA[3] > 0 )
+		{
+			if ( newNPC->client )
+			{
+				newNPC->client->ps.customRGBA[0] = spawner->s.customRGBA[0];
+				newNPC->client->ps.customRGBA[1] = spawner->s.customRGBA[1];
+				newNPC->client->ps.customRGBA[2] = spawner->s.customRGBA[2];
+				newNPC->client->ps.customRGBA[3] = spawner->s.customRGBA[3];
+			}
+			newNPC->s.customRGBA[0] = spawner->s.customRGBA[0];
+			newNPC->s.customRGBA[1] = spawner->s.customRGBA[1];
+			newNPC->s.customRGBA[2] = spawner->s.customRGBA[2];
+			newNPC->s.customRGBA[3] = spawner->s.customRGBA[3];
+		}
+		if ( spawner->s.iModelScale > 0 && spawner->s.iModelScale != 100 )
+		{
+			G_ApplyNPCScale( newNPC, spawner->s.iModelScale );
+		}
 		newNPC->npcRespawner = spawner;
 		spawner->npcRespawner = newNPC;
 		spawner->genericValue1 = 0;
@@ -4444,7 +4842,7 @@ void G_NPCRespawner_Think( gentity_t *spawner )
 	}
 }
 
-gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName, int npcLevel )
+gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName, int npcLevel, const int *customRGBA, int modelScale )
 {
 	gentity_t	*spawner;
 
@@ -4478,6 +4876,28 @@ gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_
 	spawner->wait = (float)( respawnSeconds * 1000 );
 	spawner->think = G_NPCRespawner_Think;
 
+	if ( modelScale > 0 && modelScale != 100 )
+	{
+		spawner->s.iModelScale = Com_Clampi( 10, 1023, modelScale );
+	}
+	else
+	{
+		spawner->s.iModelScale = 100;
+	}
+	VectorSet( spawner->modelScale, spawner->s.iModelScale / 100.0f, spawner->s.iModelScale / 100.0f, spawner->s.iModelScale / 100.0f );
+
+	if ( customRGBA && !( customRGBA[0] <= 0 && customRGBA[1] <= 0 && customRGBA[2] <= 0 && customRGBA[3] <= 0 ) )
+	{
+		spawner->s.customRGBA[0] = Com_Clampi( 0, 255, customRGBA[0] );
+		spawner->s.customRGBA[1] = Com_Clampi( 0, 255, customRGBA[1] );
+		spawner->s.customRGBA[2] = Com_Clampi( 0, 255, customRGBA[2] );
+		spawner->s.customRGBA[3] = ( customRGBA[3] > 0 ) ? Com_Clampi( 0, 255, customRGBA[3] ) : 255;
+	}
+	else
+	{
+		spawner->s.customRGBA[0] = spawner->s.customRGBA[1] = spawner->s.customRGBA[2] = spawner->s.customRGBA[3] = 0;
+	}
+
 	if ( initialNPC )
 	{
 		if ( spawner->NPC_targetname && spawner->NPC_targetname[0] )
@@ -4486,6 +4906,24 @@ gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_
 			initialNPC->script_targetname = spawner->NPC_targetname;
 		}
 		initialNPC->npcLevel = spawner->npcLevel;
+		if ( spawner->s.customRGBA[0] > 0 || spawner->s.customRGBA[1] > 0 || spawner->s.customRGBA[2] > 0 || spawner->s.customRGBA[3] > 0 )
+		{
+			if ( initialNPC->client )
+			{
+				initialNPC->client->ps.customRGBA[0] = spawner->s.customRGBA[0];
+				initialNPC->client->ps.customRGBA[1] = spawner->s.customRGBA[1];
+				initialNPC->client->ps.customRGBA[2] = spawner->s.customRGBA[2];
+				initialNPC->client->ps.customRGBA[3] = spawner->s.customRGBA[3];
+			}
+			initialNPC->s.customRGBA[0] = spawner->s.customRGBA[0];
+			initialNPC->s.customRGBA[1] = spawner->s.customRGBA[1];
+			initialNPC->s.customRGBA[2] = spawner->s.customRGBA[2];
+			initialNPC->s.customRGBA[3] = spawner->s.customRGBA[3];
+		}
+		if ( spawner->s.iModelScale > 0 && spawner->s.iModelScale != 100 )
+		{
+			G_ApplyNPCScale( initialNPC, spawner->s.iModelScale );
+		}
 		initialNPC->npcRespawner = spawner;
 		spawner->npcRespawner = initialNPC;
 		spawner->genericValue1 = 0;
@@ -4666,7 +5104,7 @@ void Cmd_NPC_f( gentity_t *ent )
 	if ( !cmd[0] )
 	{
 		Com_Printf( "Valid NPC commands are:\n" );
-		Com_Printf( " spawn [NPC type (from NPCs.cfg)]\n" );
+		Com_Printf( " spawn [NPC type] [level] [name] [scale] [r g b [a]]\n" );
 		Com_Printf( " kill [NPC targetname] or [all(kills all NPCs)] or 'team [teamname]'\n" );
 		Com_Printf( " showbounds (draws exact bounding boxes of NPCs)\n" );
 		Com_Printf( " score [NPC targetname] (prints number of kills per NPC)\n" );
