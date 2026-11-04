@@ -532,13 +532,15 @@ void Svcmd_AddRespawn_f( void ) {
 	char	origin_y[MAX_STRING_CHARS];
 	char	origin_z[MAX_STRING_CHARS];
 	char	yaw_arg[MAX_STRING_CHARS];
+	char	arg7[MAX_STRING_CHARS] = { 0 };
 	char	custom_name[MAX_STRING_CHARS] = { 0 };
 	vec3_t	origin;
 	float	yaw;
 	int		respawnSeconds;
+	int		npcLevel = 1;
 
 	if ( trap->Argc() < 7 ) {
-		trap->Print( "Usage: addrespawn <npc_type> <seconds> <x> <y> <z> <yaw> [name]\n" );
+		trap->Print( "Usage: addrespawn <npc_type> <seconds> <x> <y> <z> <yaw> [level] [name]\n" );
 		return;
 	}
 
@@ -549,7 +551,15 @@ void Svcmd_AddRespawn_f( void ) {
 	trap->Argv( 5, origin_z, sizeof( origin_z ) );
 	trap->Argv( 6, yaw_arg, sizeof( yaw_arg ) );
 	if ( trap->Argc() >= 8 ) {
-		trap->Argv( 7, custom_name, sizeof( custom_name ) );
+		trap->Argv( 7, arg7, sizeof( arg7 ) );
+		if ( Q_isanumber( arg7 ) && atoi( arg7 ) > 0 ) {
+			npcLevel = atoi( arg7 );
+			if ( trap->Argc() >= 9 ) {
+				trap->Argv( 8, custom_name, sizeof( custom_name ) );
+			}
+		} else {
+			Q_strncpyz( custom_name, arg7, sizeof( custom_name ) );
+		}
 	}
 
 	respawnSeconds = atoi( time_arg );
@@ -562,11 +572,11 @@ void Svcmd_AddRespawn_f( void ) {
 	origin[2] = (float)atoi( origin_z );
 	yaw = (float)atoi( yaw_arg );
 
-	G_CreateNPCRespawner( npc_type, respawnSeconds, origin, yaw, NULL, custom_name[0] ? custom_name : NULL );
+	G_CreateNPCRespawner( npc_type, respawnSeconds, origin, yaw, NULL, custom_name[0] ? custom_name : NULL, npcLevel );
 	if ( custom_name[0] ) {
-		trap->Print( "Added NPC respawn: %s \"%s\" (%ds) at <%s %s %s %s>\n", npc_type, custom_name, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+		trap->Print( "Added NPC respawn: %s \"%s\" (Lv.%d, %ds) at <%s %s %s %s>\n", npc_type, custom_name, npcLevel, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
 	} else {
-		trap->Print( "Added NPC respawn: %s (%ds) at <%s %s %s %s>\n", npc_type, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+		trap->Print( "Added NPC respawn: %s (Lv.%d, %ds) at <%s %s %s %s>\n", npc_type, npcLevel, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
 	}
 }
 

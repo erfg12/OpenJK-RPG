@@ -3579,6 +3579,9 @@ static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
 	char			timeArg[MAX_STRING_CHARS];
 	char			customName[MAX_STRING_CHARS] = { 0 };
 	int				respawnSeconds;
+	int				npcLevel = 1;
+	int				maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
+	char			arg3[MAX_STRING_CHARS];
 	gentity_t		*spawned;
 	char			savePath[MAX_QPATH];
 	vmCvar_t		mapname;
@@ -3586,7 +3589,7 @@ static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
 	char			line[512];
 
 	if ( trap->Argc() < 3 ) {
-		trap->SendServerCommand( ent-g_entities, va( "print \"Usage: /%s <npc_type> <seconds> [name]\n\"", saveToFile ? "addrespawn" : "addrespawntemp" ) );
+		trap->SendServerCommand( ent-g_entities, va( "print \"Usage: /%s <npc_type> <seconds> [level] [name]\n\"", saveToFile ? "addrespawn" : "addrespawntemp" ) );
 		return;
 	}
 
@@ -3598,7 +3601,15 @@ static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
 	trap->Argv( 1, npc_type, sizeof( npc_type ) );
 	trap->Argv( 2, timeArg, sizeof( timeArg ) );
 	if ( trap->Argc() >= 4 ) {
-		Q_strncpyz( customName, ConcatArgs( 3 ), sizeof( customName ) );
+		trap->Argv( 3, arg3, sizeof( arg3 ) );
+		if ( Q_isanumber( arg3 ) && atoi( arg3 ) > 0 ) {
+			npcLevel = Com_Clampi( 1, maxLevel, atoi( arg3 ) );
+			if ( trap->Argc() >= 5 ) {
+				Q_strncpyz( customName, ConcatArgs( 4 ), sizeof( customName ) );
+			}
+		} else {
+			Q_strncpyz( customName, ConcatArgs( 3 ), sizeof( customName ) );
+		}
 	}
 	respawnSeconds = atoi( timeArg );
 	if ( respawnSeconds < 1 ) {
@@ -3611,11 +3622,11 @@ static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
 		return;
 	}
 
-	G_CreateNPCRespawner( npc_type, respawnSeconds, spawned->r.currentOrigin, ent->client->ps.viewangles[YAW], spawned, customName[0] ? customName : NULL );
+	G_CreateNPCRespawner( npc_type, respawnSeconds, spawned->r.currentOrigin, ent->client->ps.viewangles[YAW], spawned, customName[0] ? customName : NULL, npcLevel );
 	if ( customName[0] ) {
-		trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' named '^3%s^2' (respawns every %ds).^7\n\"", npc_type, customName, respawnSeconds ) );
+		trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' named '^3%s^2' (Lv. %d, respawns every %ds).^7\n\"", npc_type, customName, npcLevel, respawnSeconds ) );
 	} else {
-		trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' (respawns every %ds).^7\n\"", npc_type, respawnSeconds ) );
+		trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' (Lv. %d, respawns every %ds).^7\n\"", npc_type, npcLevel, respawnSeconds ) );
 	}
 
 	if ( !saveToFile ) {
@@ -3634,10 +3645,15 @@ static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
 		ent->client->pers.netname, npc_type, customName[0] ? " / " : "", customName, respawnSeconds,
 		(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
 	if ( customName[0] ) {
-		Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i \"%s\"\n",
+		Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i \"%s\"\n",
 			npc_type, respawnSeconds,
-			(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW], customName );
+			(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW], npcLevel, customName );
 	} else {
+		Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i %i\n",
+			npc_type, respawnSeconds,
+			(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW], npcLevel );
+	}
+	if ( 0 ) {
 		Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i\n",
 			npc_type, respawnSeconds,
 			(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
@@ -3857,6 +3873,15 @@ void Cmd_ListModels_f( gentity_t *ent ) {
 =======================================================================
 */
 
+int G_RPG_GetNPCXP( int npcLevel ) {
+	int maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
+	int clampedLevel = Com_Clampi( 1, maxLevel, npcLevel > 0 ? npcLevel : 1 );
+	int baseXP = g_rpgDefaultNPCXP.integer > 0 ? g_rpgDefaultNPCXP.integer : 1;
+
+	return baseXP * clampedLevel;
+}
+
+#if 0
 #define MAX_RPG_NPC_XP_ENTRIES 256
 #define MAX_RPG_XP_FILE_LEN 16384
 
@@ -3874,7 +3899,17 @@ void G_RPG_Init( void ) {
 	static char		buf[MAX_RPG_XP_FILE_LEN];
 	const char		*p;
 	char			*token;
-	const char		*fileName = g_rpgNPCXPFile.string[0] ? g_rpgNPCXPFile.string : "npc_xp.cfg";
+int G_RPG_GetNPCXP( int npcLevel ) {
+	int maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
+	int clampedLevel = Com_Clampi( 1, maxLevel, npcLevel > 0 ? npcLevel : 1 );
+	int baseXP = g_rpgDefaultNPCXP.integer > 0 ? g_rpgDefaultNPCXP.integer : 1;
+
+	return baseXP * clampedLevel;
+}
+
+static void G_RPG_Unused( void ) {
+	const char *fileName = "npc_xp.cfg";
+	if ( 0 ) {
 
 	s_numRpgNPCXPEntries = 0;
 
@@ -3933,6 +3968,7 @@ int G_RPG_GetNPCXP( const char *npcType ) {
 	return g_rpgDefaultNPCXP.integer;
 }
 
+#endif
 float G_RPG_GetStatMultiplier( int level ) {
 	int maxLevel = g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99;
 	int clampedLevel = Com_Clampi( 1, maxLevel, level );

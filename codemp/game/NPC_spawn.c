@@ -1144,6 +1144,25 @@ void NPC_Begin (gentity_t *ent)
 		client->ps.stats[STAT_HEALTH] = ent->health;
 	}
 
+	if ( ent->npcLevel < 1 )
+	{
+		ent->npcLevel = 1;
+	}
+	if ( ent->npcLevel > 1 )
+	{
+		float levelMult = G_RPG_GetStatMultiplier( ent->npcLevel );
+		ent->health = (int)( (float)ent->health * levelMult + 0.5f );
+		if ( ent->health < 1 )
+		{
+			ent->health = 1;
+		}
+		client->pers.maxHealth = ent->health;
+		client->ps.stats[STAT_MAX_HEALTH] = ent->health;
+		client->ps.stats[STAT_HEALTH] = ent->health;
+	}
+	{
+	}
+
 	if (ent->s.shouldtarget)
 	{
 		ent->maxHealth = ent->health;
@@ -1616,6 +1635,7 @@ gentity_t *NPC_Spawn_Do( gentity_t *ent )
 		newent->health = ent->health;
 	}
 	newent->script_targetname = ent->NPC_targetname;
+	newent->npcLevel = ( ent->npcLevel > 0 ) ? ent->npcLevel : 1;
 	newent->targetname = ent->NPC_targetname;
 	newent->target = ent->NPC_target;//death
 	newent->target2 = ent->target2;//knocked out death
@@ -4172,10 +4192,39 @@ void NPC_Spawn_f( gentity_t *ent )
 		Q_strncpyz( targetname, ConcatArgs( 3 ), sizeof( targetname ) );
 	}
 
-	NPC_SpawnType( ent, npc_type, targetname[0] ? targetname : NULL, isVehicle );
+	{
+		gentity_t *spawned;
+		int npcLevel = 1;
+		int argOffset = isVehicle ? 4 : 3;
+		char arg[1024];
+
+		targetname[0] = '\0';
+		if ( trap->Argc() > argOffset )
+		{
+			trap->Argv( argOffset, arg, sizeof( arg ) );
+			if ( Q_isanumber( arg ) && atoi( arg ) > 0 )
+			{
+				npcLevel = Com_Clampi( 1, g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99, atoi( arg ) );
+				if ( trap->Argc() > argOffset + 1 )
+				{
+					Q_strncpyz( targetname, ConcatArgs( argOffset + 1 ), sizeof( targetname ) );
+				}
+			}
+			else
+			{
+				Q_strncpyz( targetname, ConcatArgs( argOffset ), sizeof( targetname ) );
+			}
+		}
+
+		spawned = NPC_SpawnType( ent, npc_type, targetname[0] ? targetname : NULL, isVehicle );
+		if ( spawned )
+		{
+			spawned->npcLevel = npcLevel;
+		}
+	}
 }
 
-static gentity_t *NPC_SpawnAtSpotSingle( const char *npc_type, vec3_t origin, float yaw )
+static gentity_t *NPC_SpawnAtSpotSingle( const char *npc_type, vec3_t origin, float yaw, int npcLevel )
 {
 	gentity_t	*NPCspawner = NULL;
 
@@ -4200,6 +4249,7 @@ static gentity_t *NPC_SpawnAtSpotSingle( const char *npc_type, vec3_t origin, fl
 	trap->LinkEntity( (sharedEntity_t *)NPCspawner );
 
 	NPCspawner->NPC_type = (char *)npc_type;
+	NPCspawner->npcLevel = ( npcLevel > 0 ) ? npcLevel : 1;
 	NPCspawner->genericValue15 = 1;
 	NPCspawner->count = 1;
 	NPCspawner->delay = 0;
@@ -4280,7 +4330,7 @@ static gentity_t *NPC_SpawnAtSpotSingle( const char *npc_type, vec3_t origin, fl
 	return NPC_Spawn_Do( NPCspawner );
 }
 
-gentity_t *NPC_SpawnAtSpot( const char *npc_type, vec3_t origin, float yaw )
+gentity_t *NPC_SpawnAtSpot( const char *npc_type, vec3_t origin, float yaw, int npcLevel )
 {
 	static const float offsets[8][2] = {
 		{  1.0f,  0.0f }, { -1.0f,  0.0f }, {  0.0f,  1.0f }, {  0.0f, -1.0f },
@@ -4289,7 +4339,7 @@ gentity_t *NPC_SpawnAtSpot( const char *npc_type, vec3_t origin, float yaw )
 	gentity_t	*spawned;
 	int			r, i;
 
-	spawned = NPC_SpawnAtSpotSingle( npc_type, origin, yaw );
+	spawned = NPC_SpawnAtSpotSingle( npc_type, origin, yaw, npcLevel );
 	if ( spawned )
 	{
 		return spawned;
@@ -4314,7 +4364,7 @@ gentity_t *NPC_SpawnAtSpot( const char *npc_type, vec3_t origin, float yaw )
 				continue;
 			}
 
-			spawned = NPC_SpawnAtSpotSingle( npc_type, tryOrg, yaw );
+			spawned = NPC_SpawnAtSpotSingle( npc_type, tryOrg, yaw, npcLevel );
 			if ( spawned )
 			{
 				return spawned;
@@ -4368,7 +4418,7 @@ void G_NPCRespawner_Think( gentity_t *spawner )
 	}
 	spawner->npcRespawner = NULL;
 
-	newNPC = NPC_SpawnAtSpot( spawner->NPC_type, spawner->s.origin, spawner->s.angles[YAW] );
+	newNPC = NPC_SpawnAtSpot( spawner->NPC_type, spawner->s.origin, spawner->s.angles[YAW], spawner->npcLevel );
 	if ( newNPC )
 	{
 		if ( spawner->NPC_targetname && spawner->NPC_targetname[0] )
@@ -4376,6 +4426,7 @@ void G_NPCRespawner_Think( gentity_t *spawner )
 			newNPC->targetname = spawner->NPC_targetname;
 			newNPC->script_targetname = spawner->NPC_targetname;
 		}
+		newNPC->npcLevel = ( spawner->npcLevel > 0 ) ? spawner->npcLevel : 1;
 		newNPC->npcRespawner = spawner;
 		spawner->npcRespawner = newNPC;
 		spawner->genericValue1 = 0;
@@ -4388,7 +4439,7 @@ void G_NPCRespawner_Think( gentity_t *spawner )
 	}
 }
 
-gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName )
+gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName, int npcLevel )
 {
 	gentity_t	*spawner;
 
@@ -4411,6 +4462,7 @@ gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_
 	spawner->classname = "NPC_respawner";
 	spawner->r.svFlags |= SVF_NOCLIENT;
 	spawner->NPC_type = Q_strlwr( G_NewString( npc_type ) );
+	spawner->npcLevel = Com_Clampi( 1, g_rpgMaxLevel.integer > 0 ? g_rpgMaxLevel.integer : 99, npcLevel > 0 ? npcLevel : 1 );
 	if ( customName && customName[0] )
 	{
 		spawner->NPC_targetname = G_NewString( customName );
@@ -4428,6 +4480,7 @@ gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_
 			initialNPC->targetname = spawner->NPC_targetname;
 			initialNPC->script_targetname = spawner->NPC_targetname;
 		}
+		initialNPC->npcLevel = spawner->npcLevel;
 		initialNPC->npcRespawner = spawner;
 		spawner->npcRespawner = initialNPC;
 		spawner->genericValue1 = 0;

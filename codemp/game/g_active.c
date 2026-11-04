@@ -3520,12 +3520,14 @@ void ClientThink_real( gentity_t *ent ) {
 			}
 		}
 
-		if ( hitEnt && hitEnt->inuse && ( hitEnt->s.eType == ET_NPC || hitEnt->NPC ) && hitEnt->health > 0 && hitEnt->targetname && hitEnt->targetname[0] )
+		if ( hitEnt && hitEnt->inuse && ( hitEnt->s.eType == ET_NPC || hitEnt->NPC ) && hitEnt->health > 0 )
 		{
 			if ( level.time >= client->npcNameBlockTime &&
 				( hitEnt->s.number != client->npcTargetEntNum || level.time - client->npcTargetPrintTime >= 1500 ) )
 			{
-				trap->SendServerCommand( ent - g_entities, va( "cp \"^3%s^7\"", hitEnt->targetname ) );
+				const char *npcName = ( hitEnt->targetname && hitEnt->targetname[0] ) ? hitEnt->targetname : ( ( hitEnt->NPC_type && hitEnt->NPC_type[0] ) ? hitEnt->NPC_type : "NPC" );
+				int npcLevel = hitEnt->npcLevel > 0 ? hitEnt->npcLevel : 1;
+				trap->SendServerCommand( ent - g_entities, va( "cp \"^3%s ^7(^2Lv. %d^7)\"", npcName, npcLevel ) );
 				client->npcTargetEntNum = hitEnt->s.number;
 				client->npcTargetPrintTime = level.time;
 			}

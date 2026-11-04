@@ -402,6 +402,7 @@ struct gentity_s {
 	// OpenJK add
 	int			useDebounceTime;	// for cultist_destroyer
 	gentity_t	*npcRespawner;		// for MMORPG respawning NPCs / spawners
+	int			npcLevel;			// RPG level for NPCs / spawners
 };
 
 #define DAMAGEREDIRECT_HEAD		1
@@ -1534,13 +1535,13 @@ void G_RegisterCvars( void );
 void G_UpdateCvars( void );
 
 // RPG system
-void G_RPG_Init( void );
-int G_RPG_GetNPCXP( const char *npcType );
+int G_RPG_GetNPCXP( int npcLevel );
+
 int G_RPG_GetXPForNextLevel( int level );
 float G_RPG_GetStatMultiplier( int level );
 void G_RPG_AddXP( gentity_t *player, const char *npcType, int xp );
 void Cmd_RPGStats_f( gentity_t *ent );
-gentity_t *NPC_SpawnAtSpot( const char *npc_type, vec3_t origin, float yaw );
-gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName );
+gentity_t *NPC_SpawnAtSpot( const char *npc_type, vec3_t origin, float yaw, int npcLevel );
+gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName, int npcLevel );
 
 extern gameImport_t *trap;

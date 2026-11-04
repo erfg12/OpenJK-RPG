@@ -173,7 +173,7 @@ XCVAR_DEF( g_weaponRespawn,				"5",			NULL,						CVAR_NONE,										qtrue )
 XCVAR_DEF( g_rpgBaseXP,					"5",			NULL,						CVAR_ARCHIVE,									qfalse )
 XCVAR_DEF( g_rpgDefaultNPCXP,			"1",			NULL,						CVAR_ARCHIVE,									qfalse )
 XCVAR_DEF( g_rpgMaxLevel,				"99",			NULL,						CVAR_ARCHIVE,									qfalse )
-XCVAR_DEF( g_rpgNPCXPFile,				"npc_xp.cfg",	NULL,						CVAR_ARCHIVE,									qfalse )
+
 XCVAR_DEF( g_rpgStatScale,				"0.10",			NULL,						CVAR_ARCHIVE,									qfalse )
 XCVAR_DEF( g_rpgXPGrowth,				"0.08",			NULL,						CVAR_ARCHIVE,									qfalse )
 XCVAR_DEF( gamedate,					SOURCE_DATE,	NULL,						CVAR_ROM,										qfalse )

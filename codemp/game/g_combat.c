@@ -2590,9 +2590,10 @@ extern void RunEmplacedWeapon( gentity_t *ent, usercmd_t **ucmd );
 
 			if ( ( self->s.eType == ET_NPC || self->NPC ) && attacker->s.number < MAX_CLIENTS && !attacker->NPC )
 			{
-				int npcXP = G_RPG_GetNPCXP( self->NPC_type );
+				int npcLevel = self->npcLevel > 0 ? self->npcLevel : 1;
+				int npcXP = G_RPG_GetNPCXP( npcLevel );
 				const char *npcDisplayName = ( self->targetname && self->targetname[0] ) ? self->targetname : self->NPC_type;
-				G_RPG_AddXP( attacker, npcDisplayName, npcXP );
+				G_RPG_AddXP( attacker, va( "%s Lv. %d", npcDisplayName ? npcDisplayName : "NPC", npcLevel ), npcXP );
 			}
 
 			if( meansOfDeath == MOD_STUN_BATON ) {
