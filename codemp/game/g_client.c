@@ -3387,7 +3387,7 @@ void ClientSpawn(gentity_t *ent) {
 
 	client->ps.clientNum = index;
 	//give default weapons
-	client->ps.stats[STAT_WEAPONS] = ( 1 << WP_NONE );
+	client->ps.stats[STAT_WEAPONS] = ( 1 << WP_NONE ) | ( 1 << WP_MELEE );
 
 	if (level.gametype == GT_DUEL || level.gametype == GT_POWERDUEL)
 	{
@@ -3452,7 +3452,7 @@ void ClientSpawn(gentity_t *ent) {
 			client->ps.trueJedi = qtrue;
 			//make sure they only use the saber
 			client->ps.weapon = WP_SABER;
-			client->ps.stats[STAT_WEAPONS] = (1 << WP_SABER);
+			client->ps.stats[STAT_WEAPONS] = (1 << WP_SABER) | (1 << WP_MELEE);
 		}
 		else
 		{//no force powers set
