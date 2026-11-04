@@ -2291,6 +2291,7 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 	client->pers.maxHealth = (int)( client->pers.maxHealth * G_RPG_GetStatMultiplier( client->sess.rpgLevel ) + 0.5f );
 	client->ps.stats[STAT_MAX_HEALTH] = client->pers.maxHealth;
 	client->ps.stats[STAT_RPG_LEVEL] = client->sess.rpgLevel;
+	client->npcTargetEntNum = ENTITYNUM_NONE;
 
 	if ( level.gametype >= GT_TEAM )
 		client->pers.teamInfo = qtrue;
@@ -3364,6 +3365,7 @@ void ClientSpawn(gentity_t *ent) {
 	// clear entity values
 	client->ps.stats[STAT_MAX_HEALTH] = client->pers.maxHealth;
 	client->ps.stats[STAT_RPG_LEVEL] = client->sess.rpgLevel;
+	client->npcTargetEntNum = ENTITYNUM_NONE;
 	client->ps.eFlags = flags;
 	client->mGameFlags = gameFlags;
 

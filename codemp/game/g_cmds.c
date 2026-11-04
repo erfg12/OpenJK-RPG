@@ -3577,15 +3577,16 @@ extern gentity_t *NPC_SpawnType( gentity_t *ent, char *npc_type, char *targetnam
 static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
 	char			npc_type[MAX_STRING_CHARS];
 	char			timeArg[MAX_STRING_CHARS];
+	char			customName[MAX_STRING_CHARS] = { 0 };
 	int				respawnSeconds;
 	gentity_t		*spawned;
 	char			savePath[MAX_QPATH];
 	vmCvar_t		mapname;
 	fileHandle_t	f;
-	char			line[256];
+	char			line[512];
 
 	if ( trap->Argc() < 3 ) {
-		trap->SendServerCommand( ent-g_entities, va( "print \"Usage: /%s <npc_type> <seconds>\n\"", saveToFile ? "addrespawn" : "addrespawntemp" ) );
+		trap->SendServerCommand( ent-g_entities, va( "print \"Usage: /%s <npc_type> <seconds> [name]\n\"", saveToFile ? "addrespawn" : "addrespawntemp" ) );
 		return;
 	}
 
@@ -3596,19 +3597,26 @@ static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
 
 	trap->Argv( 1, npc_type, sizeof( npc_type ) );
 	trap->Argv( 2, timeArg, sizeof( timeArg ) );
+	if ( trap->Argc() >= 4 ) {
+		Q_strncpyz( customName, ConcatArgs( 3 ), sizeof( customName ) );
+	}
 	respawnSeconds = atoi( timeArg );
 	if ( respawnSeconds < 1 ) {
 		respawnSeconds = 1;
 	}
 
-	spawned = NPC_SpawnType( ent, npc_type, NULL, qfalse );
+	spawned = NPC_SpawnType( ent, npc_type, customName[0] ? customName : NULL, qfalse );
 	if ( !spawned ) {
 		trap->SendServerCommand( ent-g_entities, va( "print \"^1Failed to spawn NPC '%s'.^7\n\"", npc_type ) );
 		return;
 	}
 
-	G_CreateNPCRespawner( npc_type, respawnSeconds, spawned->r.currentOrigin, ent->client->ps.viewangles[YAW], spawned );
-	trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' (respawns every %ds).^7\n\"", npc_type, respawnSeconds ) );
+	G_CreateNPCRespawner( npc_type, respawnSeconds, spawned->r.currentOrigin, ent->client->ps.viewangles[YAW], spawned, customName[0] ? customName : NULL );
+	if ( customName[0] ) {
+		trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' named '^3%s^2' (respawns every %ds).^7\n\"", npc_type, customName, respawnSeconds ) );
+	} else {
+		trap->SendServerCommand( ent-g_entities, va( "print \"^2Added respawning NPC '%s' (respawns every %ds).^7\n\"", npc_type, respawnSeconds ) );
+	}
 
 	if ( !saveToFile ) {
 		return;
@@ -3622,12 +3630,18 @@ static void G_AddRespawnInternal( gentity_t *ent, qboolean saveToFile ) {
 		return;
 	}
 
-	G_LogPrintf( "AddRespawn command has been executed by %s. (%s, %ds) <%i %i %i %i>\n",
-		ent->client->pers.netname, npc_type, respawnSeconds,
+	G_LogPrintf( "AddRespawn command has been executed by %s. (%s%s%s, %ds) <%i %i %i %i>\n",
+		ent->client->pers.netname, npc_type, customName[0] ? " / " : "", customName, respawnSeconds,
 		(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
-	Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i\n",
-		npc_type, respawnSeconds,
-		(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
+	if ( customName[0] ) {
+		Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i \"%s\"\n",
+			npc_type, respawnSeconds,
+			(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW], customName );
+	} else {
+		Com_sprintf( line, sizeof( line ), "addrespawn %s %i %i %i %i %i\n",
+			npc_type, respawnSeconds,
+			(int)spawned->r.currentOrigin[0], (int)spawned->r.currentOrigin[1], (int)spawned->r.currentOrigin[2], (int)ent->client->ps.viewangles[YAW] );
+	}
 	trap->FS_Write( line, strlen( line ), f );
 	trap->FS_Close( f );
 }
@@ -3638,6 +3652,60 @@ void Cmd_AddRespawn_f( gentity_t *ent ) {
 
 void Cmd_AddRespawnTemp_f( gentity_t *ent ) {
 	G_AddRespawnInternal( ent, qfalse );
+}
+
+void Cmd_NPCName_f( gentity_t *ent ) {
+	char		*newName;
+	trace_t		tr;
+	vec3_t		start, forward, end;
+	vec3_t		mins = { -10.0f, -10.0f, -10.0f };
+	vec3_t		maxs = { 10.0f, 10.0f, 10.0f };
+	gentity_t	*targetEnt = NULL;
+
+	if ( !ent || !ent->client ) {
+		return;
+	}
+
+	if ( trap->Argc() < 2 ) {
+		trap->SendServerCommand( ent - g_entities, "print \"Usage: /npcname <Custom Name> (aim at an NPC to rename it)\n\"" );
+		return;
+	}
+
+	newName = ConcatArgs( 1 );
+	if ( !newName || !newName[0] ) {
+		trap->SendServerCommand( ent - g_entities, "print \"Usage: /npcname <Custom Name> (aim at an NPC to rename it)\n\"" );
+		return;
+	}
+
+	VectorCopy( ent->client->ps.origin, start );
+	start[2] += ent->client->ps.viewheight;
+	AngleVectors( ent->client->ps.viewangles, forward, NULL, NULL );
+	VectorMA( start, 2048.0f, forward, end );
+
+	trap->Trace( &tr, start, NULL, NULL, end, ent->s.number, CONTENTS_SOLID | CONTENTS_BODY, qfalse, 0, 0 );
+	if ( tr.entityNum >= MAX_CLIENTS && tr.entityNum < ENTITYNUM_WORLD ) {
+		targetEnt = &g_entities[tr.entityNum];
+	}
+	if ( !targetEnt || !targetEnt->inuse || ( targetEnt->s.eType != ET_NPC && !targetEnt->NPC ) ) {
+		trap->Trace( &tr, start, mins, maxs, tr.endpos, ent->s.number, CONTENTS_SOLID | CONTENTS_BODY, qfalse, 0, 0 );
+		if ( tr.entityNum >= MAX_CLIENTS && tr.entityNum < ENTITYNUM_WORLD ) {
+			targetEnt = &g_entities[tr.entityNum];
+		}
+	}
+
+	if ( !targetEnt || !targetEnt->inuse || ( targetEnt->s.eType != ET_NPC && !targetEnt->NPC ) ) {
+		trap->SendServerCommand( ent - g_entities, "print \"You must be aiming at an NPC to set its name.\n\"" );
+		return;
+	}
+
+	targetEnt->targetname = G_NewString( newName );
+	targetEnt->script_targetname = targetEnt->targetname;
+	if ( targetEnt->npcRespawner && targetEnt->npcRespawner->inuse ) {
+		targetEnt->npcRespawner->NPC_targetname = targetEnt->targetname;
+	}
+
+	trap->SendServerCommand( ent - g_entities, va( "print \"Renamed %s to \\\"^3%s^7\\\".\n\"",
+		targetEnt->NPC_type ? targetEnt->NPC_type : "NPC", targetEnt->targetname ) );
 }
 
 void Cmd_ClearRespawns_f( gentity_t *ent ) {
@@ -3950,6 +4018,8 @@ void G_RPG_AddXP( gentity_t *player, const char *npcType, int xp ) {
 		}
 
 		G_Sound( player, CHAN_ANNOUNCER, G_SoundIndex( "sound/weapons/force/absorb.mp3" ) );
+		client->npcNameBlockTime = level.time + 3000;
+		client->npcTargetPrintTime = 0;
 
 		if ( client->sess.rpgLevel >= maxLevel ) {
 			trap->SendServerCommand( player - g_entities, va( "cp \"^3LEVEL UP!^7\n^2Level %d (MAX)^7\nHP: ^1%d^7 | Armor: ^2%d^7 | Force: ^5%d^7\"",
@@ -4056,6 +4126,7 @@ command_t commands[] = {
 	{ "noclip",				Cmd_Noclip_f,				CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "notarget",			Cmd_Notarget_f,				CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "npc",				Cmd_NPC_f,					CMD_ALIVE },
+	{ "npcname",			Cmd_NPCName_f,				CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "rpg",				Cmd_RPGStats_f,				CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "say",				Cmd_Say_f,					0 },
 	{ "say_team",			Cmd_SayTeam_f,				0 },

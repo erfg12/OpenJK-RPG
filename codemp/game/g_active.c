@@ -3491,6 +3491,56 @@ void ClientThink_real( gentity_t *ent ) {
 
 	G_UpdateClientBroadcasts ( ent );
 
+	if ( !isNPC && ent->s.number < MAX_CLIENTS && ent->health > 0 && level.time >= client->npcTargetCheckTime )
+	{
+		trace_t		tr;
+		vec3_t		start, forward, end;
+		vec3_t		mins = { -10.0f, -10.0f, -10.0f };
+		vec3_t		maxs = { 10.0f, 10.0f, 10.0f };
+		gentity_t	*hitEnt = NULL;
+
+		client->npcTargetCheckTime = level.time + 200;
+
+		VectorCopy( client->ps.origin, start );
+		start[2] += client->ps.viewheight;
+		AngleVectors( client->ps.viewangles, forward, NULL, NULL );
+		VectorMA( start, 1024.0f, forward, end );
+
+		trap->Trace( &tr, start, NULL, NULL, end, ent->s.number, CONTENTS_SOLID | CONTENTS_BODY, qfalse, 0, 0 );
+		if ( tr.entityNum >= MAX_CLIENTS && tr.entityNum < ENTITYNUM_WORLD )
+		{
+			hitEnt = &g_entities[tr.entityNum];
+		}
+		if ( !hitEnt || !hitEnt->inuse || ( hitEnt->s.eType != ET_NPC && !hitEnt->NPC ) )
+		{
+			trap->Trace( &tr, start, mins, maxs, tr.endpos, ent->s.number, CONTENTS_SOLID | CONTENTS_BODY, qfalse, 0, 0 );
+			if ( tr.entityNum >= MAX_CLIENTS && tr.entityNum < ENTITYNUM_WORLD )
+			{
+				hitEnt = &g_entities[tr.entityNum];
+			}
+		}
+
+		if ( hitEnt && hitEnt->inuse && ( hitEnt->s.eType == ET_NPC || hitEnt->NPC ) && hitEnt->health > 0 && hitEnt->targetname && hitEnt->targetname[0] )
+		{
+			if ( level.time >= client->npcNameBlockTime &&
+				( hitEnt->s.number != client->npcTargetEntNum || level.time - client->npcTargetPrintTime >= 1500 ) )
+			{
+				trap->SendServerCommand( ent - g_entities, va( "cp \"^3%s^7\"", hitEnt->targetname ) );
+				client->npcTargetEntNum = hitEnt->s.number;
+				client->npcTargetPrintTime = level.time;
+			}
+		}
+		else if ( client->npcTargetEntNum != ENTITYNUM_NONE )
+		{
+			client->npcTargetEntNum = ENTITYNUM_NONE;
+			if ( client->npcTargetPrintTime > 0 && level.time >= client->npcNameBlockTime )
+			{
+				trap->SendServerCommand( ent - g_entities, "cp \"\"" );
+				client->npcTargetPrintTime = 0;
+			}
+		}
+	}
+
 	//try some idle anims on ent if getting no input and not moving for some time
 	G_CheckClientIdle( ent, ucmd );
 

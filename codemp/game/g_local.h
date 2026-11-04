@@ -792,6 +792,11 @@ struct gclient_s {
 	int			lastGenCmd;
 	int			lastGenCmdTime;
 
+	int			npcTargetEntNum;
+	int			npcTargetPrintTime;
+	int			npcTargetCheckTime;
+	int			npcNameBlockTime;
+
 	struct force {
 		int		regenDebounce;
 		int		drainDebounce;
@@ -1028,6 +1033,7 @@ char *G_NewString( const char *string );
 // g_cmds.c
 //
 void Cmd_Score_f (gentity_t *ent);
+char *ConcatArgs( int start );
 void StopFollowing( gentity_t *ent );
 void BroadcastTeamChange( gclient_t *client, int oldTeam );
 void SetTeam( gentity_t *ent, char *s );
@@ -1535,6 +1541,6 @@ float G_RPG_GetStatMultiplier( int level );
 void G_RPG_AddXP( gentity_t *player, const char *npcType, int xp );
 void Cmd_RPGStats_f( gentity_t *ent );
 gentity_t *NPC_SpawnAtSpot( const char *npc_type, vec3_t origin, float yaw );
-gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC );
+gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName );
 
 extern gameImport_t *trap;

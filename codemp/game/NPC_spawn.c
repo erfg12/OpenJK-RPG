@@ -4016,7 +4016,7 @@ gentity_t *NPC_SpawnType( gentity_t *ent, char *npc_type, char *targetname, qboo
 
 	NPCspawner->NPC_type = G_NewString( npc_type );
 
-	if ( targetname )
+	if ( targetname && targetname[0] )
 	{
 		NPCspawner->NPC_targetname = G_NewString(targetname);
 	}
@@ -4137,7 +4137,7 @@ gentity_t *NPC_SpawnType( gentity_t *ent, char *npc_type, char *targetname, qboo
 			NPCspawner->s.angles[1] = ent->client->ps.viewangles[1];
 			trap->LinkEntity( (sharedEntity_t *)NPCspawner );
 			NPCspawner->NPC_type = G_NewString( npc_type );
-			if ( targetname )
+			if ( targetname && targetname[0] )
 			{
 				NPCspawner->NPC_targetname = G_NewString( targetname );
 			}
@@ -4165,14 +4165,14 @@ void NPC_Spawn_f( gentity_t *ent )
 	{
 		isVehicle = qtrue;
 		trap->Argv(3, npc_type, 1024);
-		trap->Argv(4, targetname, 1024);
+		Q_strncpyz( targetname, ConcatArgs( 4 ), sizeof( targetname ) );
 	}
 	else
 	{
-		trap->Argv(3, targetname, 1024);
+		Q_strncpyz( targetname, ConcatArgs( 3 ), sizeof( targetname ) );
 	}
 
-	NPC_SpawnType( ent, npc_type, targetname, isVehicle );
+	NPC_SpawnType( ent, npc_type, targetname[0] ? targetname : NULL, isVehicle );
 }
 
 static gentity_t *NPC_SpawnAtSpotSingle( const char *npc_type, vec3_t origin, float yaw )
@@ -4371,6 +4371,11 @@ void G_NPCRespawner_Think( gentity_t *spawner )
 	newNPC = NPC_SpawnAtSpot( spawner->NPC_type, spawner->s.origin, spawner->s.angles[YAW] );
 	if ( newNPC )
 	{
+		if ( spawner->NPC_targetname && spawner->NPC_targetname[0] )
+		{
+			newNPC->targetname = spawner->NPC_targetname;
+			newNPC->script_targetname = spawner->NPC_targetname;
+		}
 		newNPC->npcRespawner = spawner;
 		spawner->npcRespawner = newNPC;
 		spawner->genericValue1 = 0;
@@ -4383,7 +4388,7 @@ void G_NPCRespawner_Think( gentity_t *spawner )
 	}
 }
 
-gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC )
+gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_t origin, float yaw, gentity_t *initialNPC, const char *customName )
 {
 	gentity_t	*spawner;
 
@@ -4406,6 +4411,10 @@ gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_
 	spawner->classname = "NPC_respawner";
 	spawner->r.svFlags |= SVF_NOCLIENT;
 	spawner->NPC_type = Q_strlwr( G_NewString( npc_type ) );
+	if ( customName && customName[0] )
+	{
+		spawner->NPC_targetname = G_NewString( customName );
+	}
 	VectorCopy( origin, spawner->s.origin );
 	VectorCopy( origin, spawner->r.currentOrigin );
 	spawner->s.angles[YAW] = yaw;
@@ -4414,6 +4423,11 @@ gentity_t *G_CreateNPCRespawner( const char *npc_type, int respawnSeconds, vec3_
 
 	if ( initialNPC )
 	{
+		if ( spawner->NPC_targetname && spawner->NPC_targetname[0] )
+		{
+			initialNPC->targetname = spawner->NPC_targetname;
+			initialNPC->script_targetname = spawner->NPC_targetname;
+		}
 		initialNPC->npcRespawner = spawner;
 		spawner->npcRespawner = initialNPC;
 		spawner->genericValue1 = 0;

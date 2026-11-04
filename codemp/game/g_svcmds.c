@@ -532,12 +532,13 @@ void Svcmd_AddRespawn_f( void ) {
 	char	origin_y[MAX_STRING_CHARS];
 	char	origin_z[MAX_STRING_CHARS];
 	char	yaw_arg[MAX_STRING_CHARS];
+	char	custom_name[MAX_STRING_CHARS] = { 0 };
 	vec3_t	origin;
 	float	yaw;
 	int		respawnSeconds;
 
-	if ( trap->Argc() != 7 ) {
-		trap->Print( "Usage: addrespawn <npc_type> <seconds> <x> <y> <z> <yaw>\n" );
+	if ( trap->Argc() < 7 ) {
+		trap->Print( "Usage: addrespawn <npc_type> <seconds> <x> <y> <z> <yaw> [name]\n" );
 		return;
 	}
 
@@ -547,6 +548,9 @@ void Svcmd_AddRespawn_f( void ) {
 	trap->Argv( 4, origin_y, sizeof( origin_y ) );
 	trap->Argv( 5, origin_z, sizeof( origin_z ) );
 	trap->Argv( 6, yaw_arg, sizeof( yaw_arg ) );
+	if ( trap->Argc() >= 8 ) {
+		trap->Argv( 7, custom_name, sizeof( custom_name ) );
+	}
 
 	respawnSeconds = atoi( time_arg );
 	if ( respawnSeconds < 1 ) {
@@ -558,8 +562,12 @@ void Svcmd_AddRespawn_f( void ) {
 	origin[2] = (float)atoi( origin_z );
 	yaw = (float)atoi( yaw_arg );
 
-	G_CreateNPCRespawner( npc_type, respawnSeconds, origin, yaw, NULL );
-	trap->Print( "Added NPC respawn: %s (%ds) at <%s %s %s %s>\n", npc_type, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+	G_CreateNPCRespawner( npc_type, respawnSeconds, origin, yaw, NULL, custom_name[0] ? custom_name : NULL );
+	if ( custom_name[0] ) {
+		trap->Print( "Added NPC respawn: %s \"%s\" (%ds) at <%s %s %s %s>\n", npc_type, custom_name, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+	} else {
+		trap->Print( "Added NPC respawn: %s (%ds) at <%s %s %s %s>\n", npc_type, respawnSeconds, origin_x, origin_y, origin_z, yaw_arg );
+	}
 }
 
 void Svcmd_RPG_f( void ) {
