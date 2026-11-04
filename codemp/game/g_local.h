@@ -1551,6 +1551,7 @@ void G_ApplyNPCScale( gentity_t *ent, int scalePercent );
 qboolean G_ParseLevelNameRGBA( int startArg, int *outLevel, char *outName, int nameSize, int outRGBA[4], int *outScale );
 gentity_t *G_GetTargetNPC( gentity_t *ent );
 void Cmd_ListNPCs_f( gentity_t *ent );
+void Cmd_ListMaps_f( gentity_t *ent );
 extern char NPCParms[];
 
 extern gameImport_t *trap;

@@ -1964,26 +1964,7 @@ qboolean G_VoteKick( gentity_t *ent, int numArgs, const char *arg1, const char *
 const char *G_GetArenaInfoByMap( const char *map );
 
 void Cmd_MapList_f( gentity_t *ent ) {
-	int i, toggle=0;
-	char map[24] = "--", buf[512] = {0};
-
-	Q_strcat( buf, sizeof( buf ), "Map list:" );
-
-	for ( i=0; i<level.arenas.num; i++ ) {
-		Q_strncpyz( map, Info_ValueForKey( level.arenas.infos[i], "map" ), sizeof( map ) );
-		Q_StripColor( map );
-
-		if ( G_DoesMapSupportGametype( map, level.gametype ) ) {
-			char *tmpMsg = va( " ^%c%s", (++toggle&1) ? COLOR_GREEN : COLOR_YELLOW, map );
-			if ( strlen( buf ) + strlen( tmpMsg ) >= sizeof( buf ) ) {
-				trap->SendServerCommand( ent-g_entities, va( "print \"%s\"", buf ) );
-				buf[0] = '\0';
-			}
-			Q_strcat( buf, sizeof( buf ), tmpMsg );
-		}
-	}
-
-	trap->SendServerCommand( ent-g_entities, va( "print \"%s\n\"", buf ) );
+	Cmd_ListMaps_f( ent );
 }
 
 qboolean G_VoteMap( gentity_t *ent, int numArgs, const char *arg1, const char *arg2 ) {
@@ -4327,6 +4308,323 @@ void Cmd_ListNPCs_f( gentity_t *ent ) {
 }
 
 /*
+==================
+Cmd_ListMaps_f
+==================
+*/
+typedef struct {
+	char		map[64];
+	char		longname[64];
+	char		type[64];
+	qboolean	supportsCurrent;
+} mapListEntry_t;
+
+#define MAX_CACHED_MAPS		1024
+#define LISTMAPS_PER_PAGE	15
+
+static mapListEntry_t	s_mapList[MAX_CACHED_MAPS];
+static int				s_numMaps = 0;
+
+static int QDECL compareMapListEntry( const void *a, const void *b ) {
+	const mapListEntry_t *entryA = (const mapListEntry_t *)a;
+	const mapListEntry_t *entryB = (const mapListEntry_t *)b;
+	return Q_stricmp( entryA->map, entryB->map );
+}
+
+static void G_BuildMapList( void ) {
+	int		i;
+	char	filelist[8192];
+	int		numFiles;
+	char	*fileptr;
+	int		filelen;
+
+	s_numMaps = 0;
+
+	// 1. Load from level.arenas.infos (.arena files)
+	for ( i = 0; i < level.arenas.num && s_numMaps < MAX_CACHED_MAPS; i++ ) {
+		const char *mapName = Info_ValueForKey( level.arenas.infos[i], "map" );
+		const char *longName = Info_ValueForKey( level.arenas.infos[i], "longname" );
+		const char *typeStr = Info_ValueForKey( level.arenas.infos[i], "type" );
+
+		if ( !mapName || !mapName[0] ) {
+			continue;
+		}
+
+		// Avoid duplicates
+		{
+			int j;
+			qboolean exists = qfalse;
+			for ( j = 0; j < s_numMaps; j++ ) {
+				if ( !Q_stricmp( s_mapList[j].map, mapName ) ) {
+					exists = qtrue;
+					break;
+				}
+			}
+			if ( exists ) {
+				continue;
+			}
+		}
+
+		Q_strncpyz( s_mapList[s_numMaps].map, mapName, sizeof( s_mapList[s_numMaps].map ) );
+		Q_StripColor( s_mapList[s_numMaps].map );
+		if ( longName && longName[0] ) {
+			Q_strncpyz( s_mapList[s_numMaps].longname, longName, sizeof( s_mapList[s_numMaps].longname ) );
+			Q_StripColor( s_mapList[s_numMaps].longname );
+		} else {
+			Q_strncpyz( s_mapList[s_numMaps].longname, s_mapList[s_numMaps].map, sizeof( s_mapList[s_numMaps].longname ) );
+		}
+		if ( typeStr && typeStr[0] ) {
+			Q_strncpyz( s_mapList[s_numMaps].type, typeStr, sizeof( s_mapList[s_numMaps].type ) );
+		} else {
+			s_mapList[s_numMaps].type[0] = '\0';
+		}
+
+		// Strip any characters that could break client command tokenization
+		{
+			char *q = s_mapList[s_numMaps].longname;
+			while ( *q ) {
+				if ( *q == '"' || *q == '\\' ) {
+					*q = 39;
+				}
+				q++;
+			}
+			q = s_mapList[s_numMaps].map;
+			while ( *q ) {
+				if ( *q == '"' || *q == '\\' ) {
+					*q = '/';
+				}
+				q++;
+			}
+			q = s_mapList[s_numMaps].type;
+			while ( *q ) {
+				if ( *q == '"' || *q == '\\' ) {
+					*q = ' ';
+				}
+				q++;
+			}
+		}
+
+		s_mapList[s_numMaps].supportsCurrent = G_DoesMapSupportGametype( s_mapList[s_numMaps].map, level.gametype );
+		s_numMaps++;
+	}
+
+	// 2. Scan "maps/mp" for .bsp files not listed in .arena
+	numFiles = trap->FS_GetFileList( "maps/mp", ".bsp", filelist, sizeof( filelist ) );
+	fileptr = filelist;
+	for ( i = 0; i < numFiles && s_numMaps < MAX_CACHED_MAPS; i++, fileptr += filelen + 1 ) {
+		char bspName[64];
+		char fullMap[64];
+		int j;
+		qboolean exists = qfalse;
+
+		filelen = (int)strlen( fileptr );
+		COM_StripExtension( fileptr, bspName, sizeof( bspName ) );
+		Com_sprintf( fullMap, sizeof( fullMap ), "mp/%s", bspName );
+
+		for ( j = 0; j < s_numMaps; j++ ) {
+			if ( !Q_stricmp( s_mapList[j].map, fullMap ) || !Q_stricmp( s_mapList[j].map, bspName ) ) {
+				exists = qtrue;
+				break;
+			}
+		}
+		if ( exists ) {
+			continue;
+		}
+
+		Q_strncpyz( s_mapList[s_numMaps].map, fullMap, sizeof( s_mapList[s_numMaps].map ) );
+		Q_strncpyz( s_mapList[s_numMaps].longname, fullMap, sizeof( s_mapList[s_numMaps].longname ) );
+		s_mapList[s_numMaps].type[0] = '\0';
+		s_mapList[s_numMaps].supportsCurrent = G_DoesMapSupportGametype( s_mapList[s_numMaps].map, level.gametype );
+		s_numMaps++;
+	}
+
+	// 3. Scan "maps" for root .bsp files not listed in .arena
+	numFiles = trap->FS_GetFileList( "maps", ".bsp", filelist, sizeof( filelist ) );
+	fileptr = filelist;
+	for ( i = 0; i < numFiles && s_numMaps < MAX_CACHED_MAPS; i++, fileptr += filelen + 1 ) {
+		char bspName[64];
+		int j;
+		qboolean exists = qfalse;
+
+		filelen = (int)strlen( fileptr );
+		COM_StripExtension( fileptr, bspName, sizeof( bspName ) );
+
+		for ( j = 0; j < s_numMaps; j++ ) {
+			if ( !Q_stricmp( s_mapList[j].map, bspName ) ) {
+				exists = qtrue;
+				break;
+			}
+		}
+		if ( exists ) {
+			continue;
+		}
+
+		Q_strncpyz( s_mapList[s_numMaps].map, bspName, sizeof( s_mapList[s_numMaps].map ) );
+		Q_strncpyz( s_mapList[s_numMaps].longname, bspName, sizeof( s_mapList[s_numMaps].longname ) );
+		s_mapList[s_numMaps].type[0] = '\0';
+		s_mapList[s_numMaps].supportsCurrent = G_DoesMapSupportGametype( s_mapList[s_numMaps].map, level.gametype );
+		s_numMaps++;
+	}
+
+	// 4. Sort alphabetically by map name
+	if ( s_numMaps > 1 ) {
+		qsort( s_mapList, s_numMaps, sizeof( mapListEntry_t ), compareMapListEntry );
+	}
+}
+
+void Cmd_ListMaps_f( gentity_t *ent ) {
+	char arg1[MAX_TOKEN_CHARS] = {0};
+	char arg2[MAX_TOKEN_CHARS] = {0};
+	char filter[MAX_TOKEN_CHARS] = {0};
+	int page = 1;
+	int totalMatches = 0;
+	int totalPages = 1;
+	int startIndex, endIndex;
+	int matchIndex = 0;
+	int i;
+	char outBuf[960] = {0};
+	qboolean filterCurrent = qfalse;
+	int argc = trap->Argc();
+
+	if ( s_numMaps == 0 ) {
+		G_BuildMapList();
+	}
+
+	// Refresh gametype support in case gametype changed
+	for ( i = 0; i < s_numMaps; i++ ) {
+		s_mapList[i].supportsCurrent = G_DoesMapSupportGametype( s_mapList[i].map, level.gametype );
+	}
+
+	if ( argc >= 3 ) {
+		trap->Argv( 1, arg1, sizeof( arg1 ) );
+		trap->Argv( 2, arg2, sizeof( arg2 ) );
+		if ( !Q_stricmp( arg1, "current" ) || !Q_stricmp( arg1, "active" ) || !Q_stricmp( arg1, "supported" ) ) {
+			filterCurrent = qtrue;
+		} else {
+			Q_strncpyz( filter, arg1, sizeof( filter ) );
+		}
+		if ( Q_isanumber( arg2 ) && atoi( arg2 ) > 0 ) {
+			page = atoi( arg2 );
+		}
+	} else if ( argc == 2 ) {
+		trap->Argv( 1, arg1, sizeof( arg1 ) );
+		if ( Q_isanumber( arg1 ) && atoi( arg1 ) > 0 ) {
+			page = atoi( arg1 );
+		} else if ( !Q_stricmp( arg1, "current" ) || !Q_stricmp( arg1, "active" ) || !Q_stricmp( arg1, "supported" ) ) {
+			filterCurrent = qtrue;
+		} else {
+			Q_strncpyz( filter, arg1, sizeof( filter ) );
+		}
+	}
+
+	for ( i = 0; i < s_numMaps; i++ ) {
+		if ( filterCurrent ) {
+			if ( !s_mapList[i].supportsCurrent ) {
+				continue;
+			}
+		} else if ( filter[0] ) {
+			if ( !Q_stristr( s_mapList[i].map, filter ) && !Q_stristr( s_mapList[i].longname, filter ) ) {
+				continue;
+			}
+		}
+		totalMatches++;
+	}
+
+	if ( totalMatches == 0 ) {
+		if ( filterCurrent ) {
+			if ( ent ) {
+				trap->SendServerCommand( ent - g_entities, "print \"No maps found supporting the current gametype.\n\"" );
+			} else {
+				trap->Print( "No maps found supporting the current gametype.\n" );
+			}
+		} else if ( filter[0] ) {
+			if ( ent ) {
+				trap->SendServerCommand( ent - g_entities, va( "print \"No matching maps found for '%s'.\n\"", filter ) );
+			} else {
+				trap->Print( "No matching maps found for '%s'.\n", filter );
+			}
+		} else {
+			if ( ent ) {
+				trap->SendServerCommand( ent - g_entities, "print \"No maps found on server.\n\"" );
+			} else {
+				trap->Print( "No maps found on server.\n" );
+			}
+		}
+		return;
+	}
+
+	totalPages = ( totalMatches + LISTMAPS_PER_PAGE - 1 ) / LISTMAPS_PER_PAGE;
+	page = Com_Clampi( 1, totalPages, page );
+	startIndex = ( page - 1 ) * LISTMAPS_PER_PAGE;
+	endIndex = startIndex + LISTMAPS_PER_PAGE;
+	if ( endIndex > totalMatches ) {
+		endIndex = totalMatches;
+	}
+
+	if ( filterCurrent ) {
+		Q_strncpyz( outBuf, "^5=== Available Maps (Filtered: Current Gametype Supported) ===\n", sizeof( outBuf ) );
+	} else {
+		Q_strncpyz( outBuf, "^5=== Available Maps (^2[Supported]^5 vs ^3[Other Gametypes]^5) ===\n", sizeof( outBuf ) );
+	}
+
+	for ( i = 0; i < s_numMaps; i++ ) {
+		char line[256];
+
+		if ( filterCurrent ) {
+			if ( !s_mapList[i].supportsCurrent ) {
+				continue;
+			}
+		} else if ( filter[0] ) {
+			if ( !Q_stristr( s_mapList[i].map, filter ) && !Q_stristr( s_mapList[i].longname, filter ) ) {
+				continue;
+			}
+		}
+
+		if ( matchIndex >= startIndex && matchIndex < endIndex ) {
+			const char *title = s_mapList[i].longname;
+			if ( !Q_stricmp( title, s_mapList[i].map ) ) {
+				title = "";
+			}
+
+			if ( s_mapList[i].supportsCurrent ) {
+				Com_sprintf( line, sizeof( line ), "  ^2%-16s ^7%-24s ^7[^2Supported^7]\n", s_mapList[i].map, title );
+			} else if ( s_mapList[i].type[0] ) {
+				Com_sprintf( line, sizeof( line ), "  ^7%-16s ^7%-24s ^7[^3%s^7]\n", s_mapList[i].map, title, s_mapList[i].type );
+			} else {
+				Com_sprintf( line, sizeof( line ), "  ^7%-16s ^7%-24s ^7[^3Custom/Other^7]\n", s_mapList[i].map, title );
+			}
+
+			if ( strlen( outBuf ) + strlen( line ) >= sizeof( outBuf ) - 1 ) {
+				if ( ent ) {
+					trap->SendServerCommand( ent - g_entities, va( "print \"%s\"", outBuf ) );
+				} else {
+					trap->Print( "%s", outBuf );
+				}
+				outBuf[0] = '\0';
+			}
+			Q_strcat( outBuf, sizeof( outBuf ), line );
+		}
+		matchIndex++;
+	}
+
+	if ( outBuf[0] ) {
+		if ( ent ) {
+			trap->SendServerCommand( ent - g_entities, va( "print \"%s\"", outBuf ) );
+		} else {
+			trap->Print( "%s", outBuf );
+		}
+	}
+
+	if ( ent ) {
+		trap->SendServerCommand( ent - g_entities, va( "print \"^3--- Showing %d-%d of %d (Page %d/%d) | Usage: /listmaps [filter|current] [page] ---^7\n\"",
+			startIndex + 1, endIndex, totalMatches, page, totalPages ) );
+	} else {
+		trap->Print( "--- Showing %d-%d of %d (Page %d/%d) | Usage: listmaps [filter|current] [page] ---\n",
+			startIndex + 1, endIndex, totalMatches, page, totalPages );
+	}
+}
+
+/*
 =======================================================================
 
   RPG SYSTEM
@@ -4618,6 +4916,7 @@ command_t commands[] = {
 //	{ "kylesmash",			TryGrapple,					0 },
 	{ "levelshot",			Cmd_LevelShot_f,			CMD_CHEAT|CMD_ALIVE|CMD_NOINTERMISSION },
 	{ "listeffects",		Cmd_ListEffects_f,			CMD_NOINTERMISSION },
+	{ "listmaps",			Cmd_ListMaps_f,				CMD_NOINTERMISSION },
 	{ "listmodels",			Cmd_ListModels_f,			CMD_NOINTERMISSION },
 	{ "listnpcs",			Cmd_ListNPCs_f,				CMD_NOINTERMISSION },
 	{ "maplist",			Cmd_MapList_f,				CMD_NOINTERMISSION },

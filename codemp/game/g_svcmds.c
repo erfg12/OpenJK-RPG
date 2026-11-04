@@ -591,6 +591,10 @@ void Svcmd_ListNPCs_f( void ) {
 	Cmd_ListNPCs_f( NULL );
 }
 
+void Svcmd_ListMaps_f( void ) {
+	Cmd_ListMaps_f( NULL );
+}
+
 void Svcmd_RPG_f( void ) {
 	int			i;
 	gentity_t	*ent;
@@ -638,7 +642,9 @@ svcmd_t svcmds[] = {
 	{ "forceteam",					Svcmd_ForceTeam_f,					qfalse },
 	{ "game_memory",				Svcmd_GameMem_f,					qfalse },
 	{ "listip",						Svcmd_ListIP_f,						qfalse },
+	{ "listmaps",					Svcmd_ListMaps_f,					qfalse },
 	{ "listnpcs",					Svcmd_ListNPCs_f,					qfalse },
+	{ "maplist",					Svcmd_ListMaps_f,					qfalse },
 	{ "removeip",					Svcmd_RemoveIP_f,					qfalse },
 	{ "rpg",						Svcmd_RPG_f,						qfalse },
 	{ "say",						Svcmd_Say_f,						qtrue },
