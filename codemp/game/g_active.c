@@ -3527,7 +3527,7 @@ void ClientThink_real( gentity_t *ent ) {
 			{
 				const char *npcName = ( hitEnt->targetname && hitEnt->targetname[0] ) ? hitEnt->targetname : ( ( hitEnt->NPC_type && hitEnt->NPC_type[0] ) ? hitEnt->NPC_type : "NPC" );
 				int npcLevel = hitEnt->npcLevel > 0 ? hitEnt->npcLevel : 1;
-				trap->SendServerCommand( ent - g_entities, va( "cp \"^3%s ^7(^2Lv. %d^7)\"", npcName, npcLevel ) );
+				trap->SendServerCommand( ent - g_entities, va( "cp \"^3%s ^7(^2%d^7)\"", npcName, npcLevel ) );
 				client->npcTargetEntNum = hitEnt->s.number;
 				client->npcTargetPrintTime = level.time;
 			}

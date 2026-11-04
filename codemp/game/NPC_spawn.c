@@ -1150,8 +1150,13 @@ void NPC_Begin (gentity_t *ent)
 	}
 	if ( ent->npcLevel > 1 )
 	{
-		float levelMult = G_RPG_GetStatMultiplier( ent->npcLevel );
-		ent->health = (int)( (float)ent->health * levelMult + 0.5f );
+		double levelMult = (double)ent->npcLevel * pow( 1.02, (double)( ent->npcLevel - 1 ) );
+		ent->health = (int)( (double)ent->health * levelMult + 0.5 );
+		if ( ent->NPC )
+		{
+			ent->NPC->stats.health = ent->health;
+		}
+		ent->maxHealth = ent->health;
 		if ( ent->health < 1 )
 		{
 			ent->health = 1;
